@@ -9,7 +9,7 @@
  * the DOM light. A footer note tells the user how many rows are hidden.
  */
 
-import type { ParsedFile, CleanResult, Row } from '../types';
+import type { ParsedFile, Row } from '../types';
 import { escapeHtml, truncate } from '../lib/format';
 
 const MAX_PREVIEW_ROWS = 150;
