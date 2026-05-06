@@ -1,0 +1,21 @@
+{
+  "name": "csv-doctor",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Browser-based CSV cleaner. Drag-drop a messy CSV, auto-detect issues, and export a clean version. Files never leave your browser.",
+  "scripts": {
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "node ./node_modules/typescript/bin/tsc --noEmit && node ./node_modules/vite/bin/vite.js build",
+    "preview": "node ./node_modules/vite/bin/vite.js preview",
+    "lint": "node ./node_modules/typescript/bin/tsc --noEmit"
+  },
+  "dependencies": {
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.3.14",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.0"
+  }
+}
