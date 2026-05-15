@@ -47,7 +47,7 @@ function computeAggregates(rows: Row[], colIndex: number): ColAggregates {
 
   const nums = values.map(v => parseFloat(v.replace(/,/g, '')));
   const validNums = nums.filter(n => !isNaN(n));
-  const isNumeric = validNums.length / values.length >= 0.5;
+  const isNumeric = validNums.length > 0 && validNums.length / values.length >= 0.5;
 
   if (isNumeric) {
     const sum = validNums.reduce((a, b) => a + b, 0);
@@ -151,6 +151,9 @@ export function renderPreviewTable(
     bodyHtml = visibleRows.map((row, r) => {
       const cellsHtml = row.map((cell, c) => {
         const key = `${r}-${c}`;
+        // Note: changedCells keys are relative to cleaned (post-filter) row positions.
+        // When column filters are active, highlighting may appear on incorrect rows —
+        // this is a known limitation; the remapping is handled in main.ts (Task 11).
         const changed = opts.changedCells?.has(key);
         const isActiveCol = activeColumn === headers[c];
         const classes = [changed ? 'cell-changed' : '', isActiveCol ? 'col-active' : ''].filter(Boolean).join(' ');
