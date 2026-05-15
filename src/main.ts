@@ -61,9 +61,6 @@ function getFilteredRows(rows: Row[], headers: string[], filters: Map<string, st
   );
 }
 
-// Store references to analysis handlers to satisfy TypeScript's noUnusedLocals check
-const _analysisHandlers = [getFilteredRows, handleColumnClick, handleFilterChange, handleClearFilters] as const;
-void _analysisHandlers;
 
 /* ───────────────────────────────────────────────────
    Render
@@ -121,15 +118,23 @@ function render() {
     }
 
     const displayHeaders = state.result?.cleanedHeaders ?? state.parsed!.headers;
+    const displayRows = state.result ? state.result.rows : state.parsed!.rows;
+    const filteredRows = getFilteredRows(displayRows, displayHeaders, state.columnFilters);
 
     grid.appendChild(renderPreviewTable(
       state.parsed!,
-      state.result ? state.result.rows : state.parsed!.rows,
+      filteredRows,
       {
         mode: state.result ? 'cleaned' : 'original',
         changedCells,
         removedRowIndices: removedRowSet,
         displayHeaders,
+        activeColumn: state.activeColumn,
+        onColumnClick: handleColumnClick,
+        columnFilters: state.columnFilters,
+        allRows: displayRows,
+        onFilterChange: handleFilterChange,
+        onClearFilters: handleClearFilters,
       }
     ));
 
@@ -190,13 +195,26 @@ function renderFileBar(): HTMLElement {
       </div>
     </div>
     <div class="filebar-actions">
-      ${state.result ? `
-        <button class="btn btn-ghost" id="filebar-revert" type="button">Revert to original</button>
-        <button class="btn btn-primary" id="filebar-export" type="button">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download cleaned CSV
-        </button>
-      ` : ''}
+      ${state.result ? (() => {
+  const dHeaders = state.result!.cleanedHeaders ?? state.parsed!.headers;
+  const dRows = state.result!.rows;
+  const fRows = getFilteredRows(dRows, dHeaders, state.columnFilters);
+  const hasFilters = Array.from(state.columnFilters.values()).some(Boolean);
+  const exportNote = hasFilters
+    ? `Exporting ${fRows.length.toLocaleString()} rows (filtered)`
+    : `Exporting ${fRows.length.toLocaleString()} rows`;
+  const downloadDisabled = fRows.length === 0;
+  return `
+    <button class="btn btn-ghost" id="filebar-revert" type="button">Revert to original</button>
+    <div class="filebar-export-wrap">
+      <span class="filebar-export-note">${exportNote}</span>
+      <button class="btn btn-primary" id="filebar-export" type="button"${downloadDisabled ? ' disabled' : ''}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download cleaned CSV
+      </button>
+    </div>
+  `;
+})() : ''}
       <button class="btn btn-ghost" id="filebar-new" type="button">Upload another file</button>
     </div>
   `;
@@ -282,9 +300,15 @@ function handleRevert() {
 function handleExport() {
   if (!state.parsed || !state.result) return;
   const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
+  const filteredRows = getFilteredRows(state.result.rows, displayHeaders, state.columnFilters);
+  if (filteredRows.length === 0) return;
   const filename = suggestFilename(state.parsed.filename);
-  exportCsv(state.parsed, state.result.rows, filename, state.parsed.delimiter, displayHeaders);
-  showToast(`Downloaded ${filename}`, 'success');
+  exportCsv(state.parsed, filteredRows, filename, state.parsed.delimiter, displayHeaders);
+  const hasFilters = Array.from(state.columnFilters.values()).some(Boolean);
+  const msg = hasFilters
+    ? `Downloaded ${filteredRows.length.toLocaleString()} filtered rows as ${filename}`
+    : `Downloaded ${filename}`;
+  showToast(msg, 'success');
 }
 
 function handleReset() {
