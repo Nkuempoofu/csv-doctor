@@ -421,6 +421,36 @@ function detectContactFormats(file: ParsedFile): Issue | null {
   };
 }
 
+function detectSparseColumns(file: ParsedFile): Issue | null {
+  if (file.rows.length === 0) return null;
+  const THRESHOLD = 0.8;
+  const affected: string[] = [];
+
+  for (let c = 0; c < file.headers.length; c++) {
+    const emptyCount = file.rows.filter(row => (row[c] ?? '').trim() === '').length;
+    if (emptyCount / file.rows.length >= THRESHOLD) {
+      affected.push(file.headers[c] ?? `col_${c}`);
+    }
+  }
+
+  if (affected.length === 0) return null;
+
+  const wouldRemoveAll = affected.length >= file.headers.length;
+  const description = wouldRemoveAll
+    ? `${affected.length} column${affected.length === 1 ? ' is' : 's are'} ≥ 80% empty. Cannot remove — all columns would be deleted.`
+    : `${affected.length} column${affected.length === 1 ? ' is' : 's are'} ≥ 80% empty and can be safely removed.`;
+
+  return {
+    id: 'sparse-columns',
+    label: 'Sparse columns',
+    description,
+    severity: 'low',
+    count: affected.length,
+    affectedColumns: affected,
+    enabled: false,
+  };
+}
+
 /* ───────────────────────────────────────────────────
    Public — run all detectors
 ─────────────────────────────────────────────────── */
@@ -437,7 +467,8 @@ export function analyze(file: ParsedFile): Issue[] {
     detectSpecialChars,
     detectCurrencyNumbers,
     detectHeaderIssues,
-    detectContactFormats,  // NEW
+    detectContactFormats,
+    detectSparseColumns,  // NEW
   ];
 
   const issues: Issue[] = [];

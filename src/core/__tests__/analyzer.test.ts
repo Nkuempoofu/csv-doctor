@@ -109,3 +109,31 @@ describe('detectContactFormats', () => {
     expect(issues.find(i => i.id === 'contact-formats')).toBeUndefined();
   });
 });
+
+describe('detectSparseColumns', () => {
+  it('flags a column that is 80%+ empty', () => {
+    const file = makeFile(
+      ['Name', 'Notes'],
+      [
+        ['Alice', ''],
+        ['Bob', ''],
+        ['Carol', 'Has a note'],
+        ['Dave', ''],
+        ['Eve', ''],
+      ]
+    );
+    const issues = analyze(file);
+    const issue = issues.find(i => i.id === 'sparse-columns');
+    expect(issue).toBeDefined();
+    expect(issue!.affectedColumns).toContain('Notes');
+    expect(issue!.affectedColumns).not.toContain('Name');
+  });
+
+  it('does not flag a column with sufficient data', () => {
+    const file = makeFile(
+      ['Name', 'Age'],
+      [['Alice', '30'], ['Bob', '25'], ['Carol', '35']]
+    );
+    expect(analyze(file).find(i => i.id === 'sparse-columns')).toBeUndefined();
+  });
+});

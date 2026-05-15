@@ -83,3 +83,32 @@ describe('clean — contact-formats', () => {
     expect(result.rows[2][0]).toBe('bob@example.com');   // valid — unchanged
   });
 });
+
+describe('clean — sparse-columns', () => {
+  it('removes columns that are 80%+ empty', () => {
+    const file = makeFile(
+      ['Name', 'Notes', 'Age'],
+      [
+        ['Alice', '', '30'],
+        ['Bob', '', '25'],
+        ['Carol', 'a note', '35'],
+        ['Dave', '', '40'],
+        ['Eve', '', '28'],
+      ]
+    );
+    const result = clean(file, { enabled: new Set(['sparse-columns']) });
+    expect(result.cleanedHeaders).toEqual(['Name', 'Age']);
+    expect(result.rows[0]).toEqual(['Alice', '30']);
+  });
+
+  it('does NOT remove columns if it would leave zero columns', () => {
+    const file = makeFile(
+      ['Notes'],
+      [[''], [''], ['x'], [''], ['']]
+    );
+    const result = clean(file, { enabled: new Set(['sparse-columns']) });
+    // Guard fires: should keep the column
+    expect(result.cleanedHeaders).toBeUndefined();
+    expect(result.rows[0]).toEqual(['']);
+  });
+});
