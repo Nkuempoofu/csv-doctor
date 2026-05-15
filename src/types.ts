@@ -29,7 +29,11 @@ export type IssueId =
   | 'mixed-types'
   | 'mixed-dates'
   | 'mixed-booleans'
-  | 'special-chars';
+  | 'special-chars'
+  | 'currency-numbers'
+  | 'header-issues'
+  | 'contact-formats'
+  | 'sparse-columns';
 
 export interface Issue {
   id: IssueId;
@@ -55,6 +59,7 @@ export interface CleanResult {
   removedRowIndices: number[];   // rows dropped (e.g., empty / duplicate)
   changes: CellChange[];         // cell-level edits applied
   appliedFixes: IssueId[];       // which issue categories were applied
+  cleanedHeaders?: string[];     // present when header-issues or sparse-columns was applied
 }
 
 export interface AnalyzerState {
