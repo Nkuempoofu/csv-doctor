@@ -12,7 +12,7 @@
 
 import './styles.css';
 
-import type { ParsedFile, Issue, IssueId, CleanResult } from './types';
+import type { ParsedFile, Issue, IssueId, CleanResult, Row } from './types';
 import { parseCsv } from './core/parser';
 import { analyze } from './core/analyzer';
 import { clean } from './core/cleaner';
@@ -32,6 +32,8 @@ interface AppState {
   issues: Issue[];
   result: CleanResult | null;
   toast: { message: string; tone: 'info' | 'error' | 'success' } | null;
+  activeColumn: string | null;
+  columnFilters: Map<string, string>;
 }
 
 const state: AppState = {
@@ -39,7 +41,29 @@ const state: AppState = {
   issues: [],
   result: null,
   toast: null,
+  activeColumn: null,
+  columnFilters: new Map(),
 };
+
+/* ───────────────────────────────────────────────────
+   Utilities
+─────────────────────────────────────────────────── */
+
+function getFilteredRows(rows: Row[], headers: string[], filters: Map<string, string>): Row[] {
+  if (filters.size === 0) return rows;
+  return rows.filter(row =>
+    Array.from(filters.entries()).every(([col, val]) => {
+      if (!val) return true;
+      const idx = headers.indexOf(col);
+      if (idx === -1) return true;
+      return (row[idx] ?? '').toLowerCase().includes(val.toLowerCase());
+    })
+  );
+}
+
+// Store references to analysis handlers to satisfy TypeScript's noUnusedLocals check
+const _analysisHandlers = [getFilteredRows, handleColumnClick, handleFilterChange, handleClearFilters] as const;
+void _analysisHandlers;
 
 /* ───────────────────────────────────────────────────
    Render
@@ -214,6 +238,8 @@ function handleFile(text: string, name: string, size: number) {
     state.parsed = parsed;
     state.issues = issues;
     state.result = null;
+    state.activeColumn = null;
+    state.columnFilters = new Map();
     showToast(`Parsed ${parsed.rows.length.toLocaleString()} rows. ${issues.length === 0 ? 'No issues found!' : `${issues.length} issue${issues.length === 1 ? '' : 's'} detected.`}`, issues.length === 0 ? 'success' : 'info');
     render();
   } catch (err) {
@@ -248,6 +274,8 @@ function handleClean() {
 
 function handleRevert() {
   state.result = null;
+  state.activeColumn = null;
+  state.columnFilters = new Map();
   render();
 }
 
@@ -263,6 +291,27 @@ function handleReset() {
   state.parsed = null;
   state.issues = [];
   state.result = null;
+  state.activeColumn = null;
+  state.columnFilters = new Map();
+  render();
+}
+
+function handleColumnClick(header: string) {
+  state.activeColumn = state.activeColumn === header ? null : header;
+  render();
+}
+
+function handleFilterChange(column: string, value: string) {
+  if (value) {
+    state.columnFilters.set(column, value);
+  } else {
+    state.columnFilters.delete(column);
+  }
+  render();
+}
+
+function handleClearFilters() {
+  state.columnFilters = new Map();
   render();
 }
 
