@@ -213,9 +213,78 @@ function renderHero(): HTMLElement {
   const h = document.createElement('section');
   h.className = 'hero';
   h.innerHTML = `
-    <span class="hero-eyebrow">Free · Open source · 100% private</span>
-    <h1 class="hero-title">Diagnose &amp; heal<br/><span class="hero-title-accent">your messy CSVs.</span></h1>
-    <p class="hero-sub">Drop in a CSV, and CSV Doctor auto-detects empty rows, duplicates, mixed date formats, encoding artifacts, inconsistent capitalisation, and more. Toggle which fixes you want, then export a pristine clean version. All in your browser.</p>
+    <div class="hero-eyebrow-row">
+      <span class="hero-badge hero-badge--green">Free</span>
+      <span class="hero-badge hero-badge--blue">Open source</span>
+      <span class="hero-badge hero-badge--violet">100% private</span>
+    </div>
+
+    <h1 class="hero-title">
+      Messy CSV?<br>
+      <span class="hero-title-accent">Fixed in seconds.</span>
+    </h1>
+
+    <p class="hero-sub">
+      Drop in any CSV file and CSV Doctor instantly diagnoses data quality problems,
+      lets you pick the fixes you want, then exports a clean version —
+      entirely in your browser. Nothing ever leaves your machine.
+    </p>
+
+    <div class="hero-features">
+      <span class="hero-feat">Empty rows</span>
+      <span class="hero-feat">Duplicate rows</span>
+      <span class="hero-feat">Mixed date formats</span>
+      <span class="hero-feat">Whitespace noise</span>
+      <span class="hero-feat">Inconsistent casing</span>
+      <span class="hero-feat">Encoding artifacts</span>
+      <span class="hero-feat">Currency values</span>
+      <span class="hero-feat">Sparse columns</span>
+      <span class="hero-feat">Contact formats</span>
+    </div>
+
+    <div class="hero-workflow">
+      <div class="hero-step">
+        <div class="hero-step-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <span class="hero-step-label">Upload</span>
+      </div>
+      <span class="hero-step-sep">→</span>
+      <div class="hero-step">
+        <div class="hero-step-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <span class="hero-step-label">Diagnose</span>
+      </div>
+      <span class="hero-step-sep">→</span>
+      <div class="hero-step">
+        <div class="hero-step-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <span class="hero-step-label">Clean</span>
+      </div>
+      <span class="hero-step-sep">→</span>
+      <div class="hero-step">
+        <div class="hero-step-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/></svg>
+        </div>
+        <span class="hero-step-label">Filter</span>
+      </div>
+      <span class="hero-step-sep">→</span>
+      <div class="hero-step">
+        <div class="hero-step-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <span class="hero-step-label">Analyse</span>
+      </div>
+      <span class="hero-step-sep">→</span>
+      <div class="hero-step">
+        <div class="hero-step-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </div>
+        <span class="hero-step-label">Download</span>
+      </div>
+    </div>
   `;
   return h;
 }
