@@ -8,7 +8,7 @@ import type { Row, FilterSlot } from '../types';
 import { escapeHtml } from '../lib/format';
 
 export interface FilterSlotsCallbacks {
-  onSlotChange: (index: number, column: string, value: string) => void;
+  onSlotChange: (index: number, column: string, value: string | string[]) => void;
   onAddSlot: () => void;
   onRemoveSlot: (index: number) => void;
   onClearAll: () => void;
@@ -28,7 +28,11 @@ export function renderFilterSlots(
   const section = document.createElement('section');
   section.className = 'filters-section';
 
-  const activeCount = slots.filter(s => s.column !== '' && s.value !== '').length;
+  const activeCount = slots.filter(s => {
+    if (!s.column) return false;
+    if (Array.isArray(s.value)) return s.value.length > 0;
+    return s.value !== '';
+  }).length;
   const hasActive = activeCount > 0;
 
   // ── Header ──
@@ -49,7 +53,7 @@ export function renderFilterSlots(
       ),
     ].join('');
 
-    // Value field: select if chosen column has ≤ 15 unique values; text input otherwise
+    // Value field: chips if chosen column has ≤ 15 unique values; text input otherwise
     let valueHtml: string;
     if (slot.column === '') {
       valueHtml = `<input type="text" class="filter-slot-val" data-idx="${idx}" placeholder="Select a column first" disabled />`;
@@ -60,15 +64,21 @@ export function renderFilterSlots(
       )].sort();
 
       if (uniq.length <= MAX_UNIQUE_FOR_SELECT) {
-        const valOpts = [
-          `<option value="">All</option>`,
-          ...uniq.map(v =>
-            `<option value="${escapeHtml(v)}"${slot.value === v ? ' selected' : ''}>${escapeHtml(v)}</option>`
-          ),
-        ].join('');
-        valueHtml = `<select class="filter-slot-val filter-slot-val--select" data-idx="${idx}">${valOpts}</select>`;
+        // Multi-select chips — slot.value is string[] when in chip mode
+        const selected: string[] = Array.isArray(slot.value) ? slot.value : [];
+        const chips = uniq.map(v => {
+          const isSelected = selected.includes(v);
+          return `<button
+            class="filter-chip${isSelected ? ' filter-chip--selected' : ''}"
+            type="button"
+            data-idx="${idx}"
+            data-val="${escapeHtml(v)}"
+          >${escapeHtml(v)}</button>`;
+        }).join('');
+        valueHtml = `<div class="filter-chips" data-idx="${idx}">${chips}</div>`;
       } else {
-        valueHtml = `<input type="text" class="filter-slot-val" data-idx="${idx}" value="${escapeHtml(slot.value)}" placeholder="Filter…" />`;
+        const textVal = typeof slot.value === 'string' ? slot.value : '';
+        valueHtml = `<input type="text" class="filter-slot-val" data-idx="${idx}" value="${escapeHtml(textVal)}" placeholder="Filter…" />`;
       }
     }
 
@@ -102,12 +112,17 @@ export function renderFilterSlots(
       });
     });
 
-    // Value changes (select)
-    section.querySelectorAll<HTMLSelectElement>('.filter-slot-val--select').forEach(sel => {
-      sel.addEventListener('change', () => {
-        const idx = Number(sel.dataset.idx);
+    // Chip clicks (multi-select toggle)
+    section.querySelectorAll<HTMLButtonElement>('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const idx = Number(chip.dataset.idx);
+        const val = chip.dataset.val ?? '';
         const col = slots[idx]?.column ?? '';
-        cb.onSlotChange(idx, col, sel.value);
+        const current: string[] = Array.isArray(slots[idx]?.value) ? (slots[idx].value as string[]) : [];
+        const next = current.includes(val)
+          ? current.filter(v => v !== val)   // deselect
+          : [...current, val];               // select
+        cb.onSlotChange(idx, col, next);
       });
     });
 

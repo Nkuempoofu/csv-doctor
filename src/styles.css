@@ -994,6 +994,40 @@ button { font: inherit; cursor: pointer; }
   cursor: not-allowed;
 }
 
+/* Multi-select chips */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  flex: 1;
+  align-items: center;
+  padding: 0.15rem 0;
+}
+
+.filter-chip {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-family: var(--sans);
+  padding: 0.2rem 0.65rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.filter-chip:hover {
+  border-color: var(--border-h);
+  color: var(--text);
+}
+.filter-chip.filter-chip--selected {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: var(--accent);
+  color: var(--accent-l);
+  font-weight: 600;
+}
+
 /* ═══════════════════════════════════════════════════
    Analysis panel
    ═══════════════════════════════════════════════════ */

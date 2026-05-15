@@ -67,8 +67,12 @@ export interface AnalyzerState {
   issues: Issue[];
 }
 
-/** A single active filter slot — column name + match string. */
+/** A single active filter slot — column name + match value.
+ *  value: string     → substring text filter (column has >15 unique values)
+ *  value: string[]   → OR multi-select filter (column has ≤15 unique values)
+ *  value: '' | []    → slot is inactive (shows all rows)
+ */
 export interface FilterSlot {
-  column: string;  // empty string means this slot is unset
-  value: string;
+  column: string;          // empty string means this slot is unset
+  value: string | string[];
 }

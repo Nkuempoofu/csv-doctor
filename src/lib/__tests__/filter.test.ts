@@ -62,4 +62,39 @@ describe('getFilteredRows', () => {
     const slots: FilterSlot[] = [{ column: 'Unknown', value: 'foo' }];
     expect(getFilteredRows(rows, headers, slots)).toEqual(rows);
   });
+
+  // ── Multi-select (string[]) ──
+
+  it('multi-select: returns all rows when value array is empty', () => {
+    const slots: FilterSlot[] = [{ column: 'Region', value: [] }];
+    expect(getFilteredRows(rows, headers, slots)).toEqual(rows);
+  });
+
+  it('multi-select: filters to exact matches using OR logic', () => {
+    const slots: FilterSlot[] = [{ column: 'Region', value: ['ZA', 'US'] }];
+    const result = getFilteredRows(rows, headers, slots);
+    expect(result).toHaveLength(3); // all rows — ZA and US together = everyone
+  });
+
+  it('multi-select: single selected value works like exact match', () => {
+    const slots: FilterSlot[] = [{ column: 'Region', value: ['US'] }];
+    const result = getFilteredRows(rows, headers, slots);
+    expect(result).toHaveLength(1);
+    expect(result[0][0]).toBe('Bob');
+  });
+
+  it('multi-select: AND logic across slots with string[] and string', () => {
+    const slots: FilterSlot[] = [
+      { column: 'Region', value: ['ZA'] },
+      { column: 'Name',   value: 'Carol' },
+    ];
+    const result = getFilteredRows(rows, headers, slots);
+    expect(result).toHaveLength(1);
+    expect(result[0][0]).toBe('Carol');
+  });
+
+  it('multi-select: returns empty when selected value matches nothing', () => {
+    const slots: FilterSlot[] = [{ column: 'Region', value: ['EU'] }];
+    expect(getFilteredRows(rows, headers, slots)).toHaveLength(0);
+  });
 });

@@ -51,7 +51,11 @@ const state: AppState = {
 ─────────────────────────────────────────────────── */
 
 function hasActiveFilters(): boolean {
-  return state.filterSlots.some(s => s.column !== '' && s.value !== '');
+  return state.filterSlots.some(s => {
+    if (!s.column) return false;
+    if (Array.isArray(s.value)) return s.value.length > 0;
+    return s.value !== '';
+  });
 }
 
 /* ───────────────────────────────────────────────────
@@ -346,7 +350,7 @@ function handleToggleSidebar() {
   render();
 }
 
-function handleSlotChange(index: number, column: string, value: string) {
+function handleSlotChange(index: number, column: string, value: string | string[]) {
   state.filterSlots = state.filterSlots.map((s, i) =>
     i === index ? { column, value } : s
   );
