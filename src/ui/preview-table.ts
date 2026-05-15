@@ -18,6 +18,7 @@ interface PreviewOptions {
   mode: 'original' | 'cleaned';
   changedCells?: Set<string>; // "row-col" keys for highlighting
   removedRowIndices?: Set<number>;
+  displayHeaders?: string[];   // NEW: overrides file.headers when set
 }
 
 export function renderPreviewTable(
@@ -31,7 +32,8 @@ export function renderPreviewTable(
   const visibleRows = rows.slice(0, MAX_PREVIEW_ROWS);
   const hidden = rows.length - visibleRows.length;
 
-  const headerCells = file.headers.map((h) =>
+  const headers = opts.displayHeaders ?? file.headers;
+  const headerCells = headers.map((h) =>
     `<th>${escapeHtml(h || '(blank)')}</th>`
   ).join('');
 
@@ -48,7 +50,7 @@ export function renderPreviewTable(
   wrap.innerHTML = `
     <div class="preview-meta">
       <span class="preview-mode">${opts.mode === 'cleaned' ? 'After cleaning' : 'Original data'}</span>
-      <span class="preview-count">${rows.length.toLocaleString()} row${rows.length === 1 ? '' : 's'} · ${file.headers.length} column${file.headers.length === 1 ? '' : 's'}${hidden > 0 ? ` · showing first ${visibleRows.length}` : ''}</span>
+      <span class="preview-count">${rows.length.toLocaleString()} row${rows.length === 1 ? '' : 's'} · ${headers.length} column${headers.length === 1 ? '' : 's'}${hidden > 0 ? ` · showing first ${visibleRows.length}` : ''}</span>
     </div>
     <div class="preview-scroll">
       <table class="preview-table">

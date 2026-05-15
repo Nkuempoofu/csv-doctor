@@ -10,14 +10,15 @@ import type { ParsedFile, Row } from '../types';
 
 export function exportCsv(
   file: ParsedFile,
-  cleanedRows: Row[],
+  rows: Row[],
   filename: string,
-  delimiter: string = file.delimiter
+  delimiter: string = file.delimiter,
+  headers: string[] = file.headers
 ): void {
   const csv = Papa.unparse(
     {
-      fields: file.headers,
-      data: cleanedRows,
+      fields: headers,
+      data: rows,
     },
     {
       delimiter,

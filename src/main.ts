@@ -96,13 +96,16 @@ function render() {
       }
     }
 
+    const displayHeaders = state.result?.cleanedHeaders ?? state.parsed!.headers;
+
     grid.appendChild(renderPreviewTable(
-      state.parsed,
-      state.result ? state.result.rows : state.parsed.rows,
+      state.parsed!,
+      state.result ? state.result.rows : state.parsed!.rows,
       {
         mode: state.result ? 'cleaned' : 'original',
         changedCells,
         removedRowIndices: removedRowSet,
+        displayHeaders,
       }
     ));
 
@@ -250,8 +253,9 @@ function handleRevert() {
 
 function handleExport() {
   if (!state.parsed || !state.result) return;
+  const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
   const filename = suggestFilename(state.parsed.filename);
-  exportCsv(state.parsed, state.result.rows, filename);
+  exportCsv(state.parsed, state.result.rows, filename, state.parsed.delimiter, displayHeaders);
   showToast(`Downloaded ${filename}`, 'success');
 }
 
