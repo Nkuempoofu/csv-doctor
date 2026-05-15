@@ -275,6 +275,53 @@ function detectSpecialChars(file: ParsedFile): Issue | null {
   };
 }
 
+function detectCurrencyNumbers(file: ParsedFile): Issue | null {
+  const SYMBOL_RE = /[£$€¥R]/;
+  const COMMA_NUM_RE = /^\d{1,3}(,\d{3})+(\.\d+)?$/;
+
+  const affected: string[] = [];
+  let totalCells = 0;
+
+  for (let c = 0; c < file.headers.length; c++) {
+    let flagged = 0;
+    let nonEmpty = 0;
+    for (const row of file.rows) {
+      const v = (row[c] ?? '').trim();
+      if (!v) continue;
+      nonEmpty++;
+      if (SYMBOL_RE.test(v) || COMMA_NUM_RE.test(v)) flagged++;
+    }
+    if (nonEmpty > 0 && flagged / nonEmpty >= 0.3) {
+      affected.push(file.headers[c] ?? `col_${c}`);
+      totalCells += flagged;
+    }
+  }
+
+  if (affected.length === 0) return null;
+
+  const hasMixedCurrencies = (col: string) => {
+    const cIdx = file.headers.indexOf(col);
+    const symbols = new Set<string>();
+    for (const row of file.rows) {
+      const m = (row[cIdx] ?? '').match(/[£$€¥R]/g);
+      if (m) m.forEach(s => symbols.add(s));
+    }
+    return symbols.size > 1;
+  };
+  const mixed = affected.filter(hasMixedCurrencies);
+  const mixedNote = mixed.length > 0 ? ` Mixed currencies detected in: ${mixed.join(', ')}.` : '';
+
+  return {
+    id: 'currency-numbers',
+    label: 'Currency / number formatting',
+    description: `${affected.length} column${affected.length === 1 ? ' contains' : 's contain'} values with currency symbols or thousands-separator formatting (e.g. "$1,200.00"). Cleaning strips symbols and separators to plain numbers.${mixedNote}`,
+    severity: 'medium',
+    count: totalCells,
+    affectedColumns: affected,
+    enabled: true,
+  };
+}
+
 /* ───────────────────────────────────────────────────
    Public — run all detectors
 ─────────────────────────────────────────────────── */
@@ -289,6 +336,7 @@ export function analyze(file: ParsedFile): Issue[] {
     detectMixedCase,
     detectMixedBooleans,
     detectSpecialChars,
+    detectCurrencyNumbers,  // NEW
   ];
 
   const issues: Issue[] = [];
