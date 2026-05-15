@@ -10,6 +10,7 @@ interface PanelCallbacks {
   onToggle: (issueId: Issue['id'], enabled: boolean) => void;
   onApplyAll: () => void;
   onClean: () => void;
+  onHide: () => void;
 }
 
 const SEVERITY_LABEL = {
@@ -24,6 +25,12 @@ export function createIssuesPanel(issues: Issue[], cb: PanelCallbacks): HTMLElem
 
   if (issues.length === 0) {
     panel.innerHTML = `
+      <header class="issues-head">
+        <div>
+          <h3 class="issues-title">Diagnosis</h3>
+        </div>
+        <button class="issues-hide-btn" type="button" id="issues-hide-btn-empty" title="Hide sidebar" aria-label="Hide diagnosis sidebar">◀</button>
+      </header>
       <div class="issues-empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
@@ -33,6 +40,8 @@ export function createIssuesPanel(issues: Issue[], cb: PanelCallbacks): HTMLElem
         <p>Your CSV looks pristine. You can still re-export it or upload another file.</p>
       </div>
     `;
+    panel.querySelector<HTMLButtonElement>('#issues-hide-btn-empty')!
+      .addEventListener('click', cb.onHide);
     return panel;
   }
 
@@ -64,7 +73,10 @@ export function createIssuesPanel(issues: Issue[], cb: PanelCallbacks): HTMLElem
         <h3 class="issues-title">Diagnosis</h3>
         <p class="issues-sub">${issues.length} issue${issues.length === 1 ? '' : 's'} found · toggle to choose what to fix</p>
       </div>
-      <button class="issues-all-btn" type="button" id="issues-all-btn">Apply all</button>
+      <div class="issues-head-actions">
+        <button class="issues-all-btn" type="button" id="issues-all-btn">Apply all</button>
+        <button class="issues-hide-btn" type="button" id="issues-hide-btn" title="Hide sidebar" aria-label="Hide diagnosis sidebar">◀</button>
+      </div>
     </header>
     <ul class="issues-list">${list}</ul>
     <footer class="issues-foot">
@@ -89,6 +101,9 @@ export function createIssuesPanel(issues: Issue[], cb: PanelCallbacks): HTMLElem
 
   panel.querySelector<HTMLButtonElement>('#issues-clean-btn')!
     .addEventListener('click', cb.onClean);
+
+  panel.querySelector<HTMLButtonElement>('#issues-hide-btn')!
+    .addEventListener('click', cb.onHide);
 
   return panel;
 }

@@ -1,25 +1,24 @@
 /**
  * CSV Doctor — entry point.
  *
- * Owns the application state and orchestrates the four UI sections:
- * upload zone → diagnosis (issues panel + stats) → preview table → export.
- *
- * State machine is intentionally simple:
- *   • idle      — no file loaded, show upload zone
- *   • analyzed  — file parsed and analyzed, showing issues + original preview
- *   • cleaned   — fixes applied, showing cleaned preview + export button
+ * Upload → Diagnose → Clean → Filter → Analyse → Download
+ * All in a single page, no navigation.
  */
 
 import './styles.css';
 
-import type { ParsedFile, Issue, IssueId, CleanResult, Row } from './types';
+import type { ParsedFile, Issue, IssueId, CleanResult, FilterSlot } from './types';
 import { parseCsv } from './core/parser';
 import { analyze } from './core/analyzer';
 import { clean } from './core/cleaner';
 import { exportCsv, suggestFilename } from './core/exporter';
+import { getFilteredRows } from './lib/filter';
 import { createUploadZone } from './ui/upload';
 import { createIssuesPanel } from './ui/issues-panel';
 import { renderPreviewTable } from './ui/preview-table';
+import { renderFilterSlots } from './ui/filter-slots';
+import { renderAnalysisPanel } from './ui/analysis-panel';
+import { renderDownloadBar } from './ui/download-bar';
 import { renderStats } from './ui/stats';
 import { bytes } from './lib/format';
 
@@ -33,7 +32,8 @@ interface AppState {
   result: CleanResult | null;
   toast: { message: string; tone: 'info' | 'error' | 'success' } | null;
   activeColumn: string | null;
-  columnFilters: Map<string, string>;
+  filterSlots: FilterSlot[];
+  sidebarOpen: boolean;
 }
 
 const state: AppState = {
@@ -42,29 +42,17 @@ const state: AppState = {
   result: null,
   toast: null,
   activeColumn: null,
-  columnFilters: new Map(),
+  filterSlots: [{ column: '', value: '' }],
+  sidebarOpen: true,
 };
 
 /* ───────────────────────────────────────────────────
    Utilities
 ─────────────────────────────────────────────────── */
 
-function getFilteredRows(rows: Row[], headers: string[], filters: Map<string, string>): Row[] {
-  if (filters.size === 0) return rows;
-  return rows.filter(row =>
-    Array.from(filters.entries()).every(([col, val]) => {
-      if (!val) return true;
-      const idx = headers.indexOf(col);
-      if (idx === -1) return true;
-      return (row[idx] ?? '').toLowerCase().includes(val.toLowerCase());
-    })
-  );
-}
-
 function hasActiveFilters(): boolean {
-  return Array.from(state.columnFilters.values()).some(Boolean);
+  return state.filterSlots.some(s => s.column !== '' && s.value !== '');
 }
-
 
 /* ───────────────────────────────────────────────────
    Render
@@ -87,29 +75,47 @@ function render() {
       onError: (msg) => showToast(msg, 'error'),
     }));
   } else {
-    const displayHeaders = state.result?.cleanedHeaders ?? state.parsed!.headers;
-    const displayRows = state.result ? state.result.rows : state.parsed!.rows;
-    const filteredRows = getFilteredRows(displayRows, displayHeaders, state.columnFilters);
+    const displayHeaders = state.result?.cleanedHeaders ?? state.parsed.headers;
+    const displayRows = state.result ? state.result.rows : state.parsed.rows;
+    const filteredRows = getFilteredRows(displayRows, displayHeaders, state.filterSlots);
 
-    main.appendChild(renderFileBar(filteredRows));
+    main.appendChild(renderFileBar());
     main.appendChild(renderStats(state.parsed, state.result));
 
+    // ── Workspace: sidebar + table ──
     const grid = document.createElement('div');
-    grid.className = 'workspace';
+    grid.className = `workspace${state.sidebarOpen ? '' : ' sidebar-collapsed'}`;
 
-    grid.appendChild(createIssuesPanel(state.issues, {
-      onToggle: handleToggleIssue,
-      onApplyAll: handleApplyAll,
-      onClean: handleClean,
-    }));
+    // Sidebar wrapper
+    const sidebarWrap = document.createElement('div');
+    sidebarWrap.className = `issues-sidebar${state.sidebarOpen ? '' : ' collapsed'}`;
 
-    /* Build the diff highlight set if we have a clean result */
+    if (state.sidebarOpen) {
+      sidebarWrap.appendChild(createIssuesPanel(state.issues, {
+        onToggle: handleToggleIssue,
+        onApplyAll: handleApplyAll,
+        onClean: handleClean,
+        onHide: handleToggleSidebar,
+      }));
+    } else {
+      const strip = document.createElement('button');
+      strip.className = 'sidebar-strip';
+      strip.id = 'sidebar-expand';
+      strip.type = 'button';
+      strip.setAttribute('aria-label', 'Show diagnosis sidebar');
+      strip.innerHTML = `<span class="sidebar-strip-label">▶ Diagnosis (${state.issues.length})</span>`;
+      sidebarWrap.appendChild(strip);
+      setTimeout(() => {
+        document.getElementById('sidebar-expand')
+          ?.addEventListener('click', handleToggleSidebar);
+      }, 0);
+    }
+    grid.appendChild(sidebarWrap);
+
+    // Build diff highlight set
     const changedCells = new Set<string>();
     let removedRowSet: Set<number> | undefined;
     if (state.result) {
-      // Map original row indices → new positions in cleaned rows. Since rows
-      // can be removed, we need to translate "rowIndex in original" to "rowIndex
-      // in cleaned" for highlighting purposes.
       const originalToCleaned = new Map<number, number>();
       let cleanedIdx = 0;
       removedRowSet = new Set(state.result.removedRowIndices);
@@ -126,23 +132,46 @@ function render() {
     }
 
     grid.appendChild(renderPreviewTable(
-      state.parsed!,
+      state.parsed,
       filteredRows,
       {
         mode: state.result ? 'cleaned' : 'original',
         changedCells,
         removedRowIndices: removedRowSet,
         displayHeaders,
-        activeColumn: state.activeColumn,
-        onColumnClick: handleColumnClick,
-        columnFilters: state.columnFilters,
-        allRows: displayRows,
-        onFilterChange: handleFilterChange,
-        onClearFilters: handleClearFilters,
       }
     ));
 
     main.appendChild(grid);
+
+    // ── Below workspace ──
+    main.appendChild(renderFilterSlots(
+      displayHeaders,
+      displayRows,
+      state.filterSlots,
+      filteredRows.length,
+      {
+        onSlotChange: handleSlotChange,
+        onAddSlot: handleAddSlot,
+        onRemoveSlot: handleRemoveSlot,
+        onClearAll: handleClearAllFilters,
+      }
+    ));
+
+    main.appendChild(renderAnalysisPanel(
+      displayHeaders,
+      filteredRows,
+      state.activeColumn,
+      handleColumnSelect,
+    ));
+
+    main.appendChild(renderDownloadBar(
+      filteredRows.length,
+      state.result !== null,
+      hasActiveFilters(),
+      handleExport,
+      handleRevert,
+    ));
   }
 
   app.appendChild(main);
@@ -187,7 +216,7 @@ function renderHero(): HTMLElement {
   return h;
 }
 
-function renderFileBar(filteredRows: Row[]): HTMLElement {
+function renderFileBar(): HTMLElement {
   const f = document.createElement('div');
   f.className = 'filebar';
   f.innerHTML = `
@@ -199,30 +228,10 @@ function renderFileBar(filteredRows: Row[]): HTMLElement {
       </div>
     </div>
     <div class="filebar-actions">
-      ${state.result ? (() => {
-  const exportNote = hasActiveFilters()
-    ? `Exporting ${filteredRows.length.toLocaleString()} rows (filtered)`
-    : `Exporting ${filteredRows.length.toLocaleString()} rows`;
-  const downloadDisabled = filteredRows.length === 0;
-  return `
-    <button class="btn btn-ghost" id="filebar-revert" type="button">Revert to original</button>
-    <div class="filebar-export-wrap">
-      <span class="filebar-export-note">${exportNote}</span>
-      <button class="btn btn-primary" id="filebar-export" type="button"${downloadDisabled ? ' disabled' : ''}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Download cleaned CSV
-      </button>
-    </div>
-  `;
-})() : ''}
       <button class="btn btn-ghost" id="filebar-new" type="button">Upload another file</button>
     </div>
   `;
   setTimeout(() => {
-    const exp = document.getElementById('filebar-export');
-    if (exp) exp.addEventListener('click', handleExport);
-    const rev = document.getElementById('filebar-revert');
-    if (rev) rev.addEventListener('click', handleRevert);
     document.getElementById('filebar-new')!.addEventListener('click', handleReset);
   }, 0);
   return f;
@@ -257,8 +266,14 @@ function handleFile(text: string, name: string, size: number) {
     state.issues = issues;
     state.result = null;
     state.activeColumn = null;
-    state.columnFilters = new Map();
-    showToast(`Parsed ${parsed.rows.length.toLocaleString()} rows. ${issues.length === 0 ? 'No issues found!' : `${issues.length} issue${issues.length === 1 ? '' : 's'} detected.`}`, issues.length === 0 ? 'success' : 'info');
+    state.filterSlots = [{ column: '', value: '' }];
+    state.sidebarOpen = true;
+    showToast(
+      `Parsed ${parsed.rows.length.toLocaleString()} rows. ${
+        issues.length === 0 ? 'No issues found!' : `${issues.length} issue${issues.length === 1 ? '' : 's'} detected.`
+      }`,
+      issues.length === 0 ? 'success' : 'info'
+    );
     render();
   } catch (err) {
     showToast(err instanceof Error ? err.message : 'Could not parse the file.', 'error');
@@ -266,41 +281,47 @@ function handleFile(text: string, name: string, size: number) {
 }
 
 function handleToggleIssue(id: IssueId, enabled: boolean) {
-  state.issues = state.issues.map((i) => (i.id === id ? { ...i, enabled } : i));
-  // Re-running clean automatically would be nice, but it can be slow on big
-  // files. Wait for explicit "Apply" click.
+  state.issues = state.issues.map(i => (i.id === id ? { ...i, enabled } : i));
   state.result = null;
   render();
 }
 
 function handleApplyAll() {
-  state.issues = state.issues.map((i) => ({ ...i, enabled: true }));
+  state.issues = state.issues.map(i => ({ ...i, enabled: true }));
   render();
 }
 
 function handleClean() {
   if (!state.parsed) return;
-  const enabled = new Set<IssueId>(state.issues.filter((i) => i.enabled).map((i) => i.id));
+  const enabled = new Set<IssueId>(state.issues.filter(i => i.enabled).map(i => i.id));
   if (enabled.size === 0) {
     showToast('Toggle at least one fix on first.', 'info');
     return;
   }
   state.result = clean(state.parsed, { enabled });
-  showToast(`Cleaned ${state.result.changes.length} cell${state.result.changes.length === 1 ? '' : 's'} and removed ${state.result.removedRowIndices.length} row${state.result.removedRowIndices.length === 1 ? '' : 's'}.`, 'success');
+  // Reset activeColumn if it was removed by sparse-columns fix
+  const cleanedHeaders = state.result.cleanedHeaders;
+  if (cleanedHeaders && state.activeColumn && !cleanedHeaders.includes(state.activeColumn)) {
+    state.activeColumn = null;
+  }
+  showToast(
+    `Cleaned ${state.result.changes.length} cell${state.result.changes.length === 1 ? '' : 's'} and removed ${state.result.removedRowIndices.length} row${state.result.removedRowIndices.length === 1 ? '' : 's'}.`,
+    'success'
+  );
   render();
 }
 
 function handleRevert() {
   state.result = null;
   state.activeColumn = null;
-  state.columnFilters = new Map();
+  state.filterSlots = [{ column: '', value: '' }];
   render();
 }
 
 function handleExport() {
   if (!state.parsed || !state.result) return;
   const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
-  const filteredRows = getFilteredRows(state.result.rows, displayHeaders, state.columnFilters);
+  const filteredRows = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
   if (filteredRows.length === 0) return;
   const filename = suggestFilename(state.parsed.filename);
   exportCsv(state.parsed, filteredRows, filename, state.parsed.delimiter, displayHeaders);
@@ -315,26 +336,42 @@ function handleReset() {
   state.issues = [];
   state.result = null;
   state.activeColumn = null;
-  state.columnFilters = new Map();
+  state.filterSlots = [{ column: '', value: '' }];
+  state.sidebarOpen = true;
   render();
 }
 
-function handleColumnClick(header: string) {
-  state.activeColumn = state.activeColumn === header ? null : header;
+function handleToggleSidebar() {
+  state.sidebarOpen = !state.sidebarOpen;
   render();
 }
 
-function handleFilterChange(column: string, value: string) {
-  if (value) {
-    state.columnFilters.set(column, value);
-  } else {
-    state.columnFilters.delete(column);
-  }
+function handleSlotChange(index: number, column: string, value: string) {
+  state.filterSlots = state.filterSlots.map((s, i) =>
+    i === index ? { column, value } : s
+  );
   render();
 }
 
-function handleClearFilters() {
-  state.columnFilters = new Map();
+function handleAddSlot() {
+  if (state.filterSlots.length >= 5) return;
+  state.filterSlots = [...state.filterSlots, { column: '', value: '' }];
+  render();
+}
+
+function handleRemoveSlot(index: number) {
+  if (state.filterSlots.length <= 1) return;
+  state.filterSlots = state.filterSlots.filter((_, i) => i !== index);
+  render();
+}
+
+function handleClearAllFilters() {
+  state.filterSlots = [{ column: '', value: '' }];
+  render();
+}
+
+function handleColumnSelect(col: string | null) {
+  state.activeColumn = col;
   render();
 }
 
