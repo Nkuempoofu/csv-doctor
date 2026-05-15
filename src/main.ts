@@ -61,6 +61,10 @@ function getFilteredRows(rows: Row[], headers: string[], filters: Map<string, st
   );
 }
 
+function hasActiveFilters(): boolean {
+  return Array.from(state.columnFilters.values()).some(Boolean);
+}
+
 
 /* ───────────────────────────────────────────────────
    Render
@@ -83,7 +87,11 @@ function render() {
       onError: (msg) => showToast(msg, 'error'),
     }));
   } else {
-    main.appendChild(renderFileBar());
+    const displayHeaders = state.result?.cleanedHeaders ?? state.parsed!.headers;
+    const displayRows = state.result ? state.result.rows : state.parsed!.rows;
+    const filteredRows = getFilteredRows(displayRows, displayHeaders, state.columnFilters);
+
+    main.appendChild(renderFileBar(filteredRows));
     main.appendChild(renderStats(state.parsed, state.result));
 
     const grid = document.createElement('div');
@@ -116,10 +124,6 @@ function render() {
         if (newIdx !== undefined) changedCells.add(`${newIdx}-${ch.colIndex}`);
       }
     }
-
-    const displayHeaders = state.result?.cleanedHeaders ?? state.parsed!.headers;
-    const displayRows = state.result ? state.result.rows : state.parsed!.rows;
-    const filteredRows = getFilteredRows(displayRows, displayHeaders, state.columnFilters);
 
     grid.appendChild(renderPreviewTable(
       state.parsed!,
@@ -183,7 +187,7 @@ function renderHero(): HTMLElement {
   return h;
 }
 
-function renderFileBar(): HTMLElement {
+function renderFileBar(filteredRows: Row[]): HTMLElement {
   const f = document.createElement('div');
   f.className = 'filebar';
   f.innerHTML = `
@@ -196,14 +200,10 @@ function renderFileBar(): HTMLElement {
     </div>
     <div class="filebar-actions">
       ${state.result ? (() => {
-  const dHeaders = state.result!.cleanedHeaders ?? state.parsed!.headers;
-  const dRows = state.result!.rows;
-  const fRows = getFilteredRows(dRows, dHeaders, state.columnFilters);
-  const hasFilters = Array.from(state.columnFilters.values()).some(Boolean);
-  const exportNote = hasFilters
-    ? `Exporting ${fRows.length.toLocaleString()} rows (filtered)`
-    : `Exporting ${fRows.length.toLocaleString()} rows`;
-  const downloadDisabled = fRows.length === 0;
+  const exportNote = hasActiveFilters()
+    ? `Exporting ${filteredRows.length.toLocaleString()} rows (filtered)`
+    : `Exporting ${filteredRows.length.toLocaleString()} rows`;
+  const downloadDisabled = filteredRows.length === 0;
   return `
     <button class="btn btn-ghost" id="filebar-revert" type="button">Revert to original</button>
     <div class="filebar-export-wrap">
@@ -304,8 +304,7 @@ function handleExport() {
   if (filteredRows.length === 0) return;
   const filename = suggestFilename(state.parsed.filename);
   exportCsv(state.parsed, filteredRows, filename, state.parsed.delimiter, displayHeaders);
-  const hasFilters = Array.from(state.columnFilters.values()).some(Boolean);
-  const msg = hasFilters
+  const msg = hasActiveFilters()
     ? `Downloaded ${filteredRows.length.toLocaleString()} filtered rows as ${filename}`
     : `Downloaded ${filename}`;
   showToast(msg, 'success');
