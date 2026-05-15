@@ -72,14 +72,20 @@ export function renderAnalysisToolbar(
   // Wire events after innerHTML is set
   setTimeout(() => {
     bar.querySelectorAll<HTMLSelectElement>('.ab-select').forEach(sel => {
-      sel.addEventListener('change', () => cb.onFilterChange(sel.dataset.col!, sel.value));
+      sel.addEventListener('change', () => {
+        const col = sel.dataset.col;
+        if (!col) return;
+        cb.onFilterChange(col, sel.value);
+      });
     });
 
-    let debounceTimer: ReturnType<typeof setTimeout>;
     bar.querySelectorAll<HTMLInputElement>('.ab-input').forEach(input => {
+      let debounceTimer: ReturnType<typeof setTimeout>;
       input.addEventListener('input', () => {
+        const col = input.dataset.col;
+        if (!col) return;
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => cb.onFilterChange(input.dataset.col!, input.value), DEBOUNCE_MS);
+        debounceTimer = setTimeout(() => cb.onFilterChange(col, input.value), DEBOUNCE_MS);
       });
     });
 
