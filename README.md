@@ -25,6 +25,18 @@ Drop in a CSV with the kind of mess you actually deal with — empty rows, dupli
 | 📅 **Mixed date formats** | Same column using ISO + US + European date formats |
 | ✓ **Mixed booleans** | Same column using "Yes/No" + "True/False" + "1/0" |
 | 𝒜 **Encoding artifacts** | Mojibake like `â€™` from UTF-8 / cp1252 round-trips |
+| 💰 **Currency / number formatting** | Values like `$1,200.00` or `€ 850` that should be plain numbers |
+| 🏷 **Header formatting** | Headers with extra whitespace, duplicates, or mixed naming conventions |
+| 📞 **Phone / email formats** | Phone numbers in 3+ different formats; invalid email addresses |
+| 🕳 **Sparse columns** | Columns that are ≥ 80% empty — candidates for removal |
+
+### In-table analysis
+
+Once a file is loaded, an **Analysis toolbar** appears above the preview table:
+
+- **Filter any column** — low-cardinality columns (≤ 15 unique values) show a dropdown; all others get a text search. Active filters show a *Showing X of Y rows* pill.
+- **Click any column header** to select it — a sticky **aggregation footer** appears with Sum, Avg, Count, Min, and Max computed over the currently filtered rows.
+- **Download respects filters** — if filters are active, only the matching rows are exported.
 
 ### Why it's different
 
@@ -144,7 +156,7 @@ This is genuinely private — there is **no server**. CSV files are read into me
 - [ ] **Excel `.xlsx` support** via SheetJS (lazy-loaded chunk)
 - [ ] **Custom rules** — let users define their own find/replace rules
 - [ ] **Column-by-column type coercion** UI (parse this column as date / number / boolean)
-- [ ] **Diff export** — download a sidecar `.diff.csv` showing every change
+- [ ] **Multi-condition filters** — AND/OR filter logic across columns
 - [ ] **PWA install** — full offline support
 - [ ] **i18n** — Spanish / French / German / Zulu
 
