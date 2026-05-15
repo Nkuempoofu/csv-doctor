@@ -322,6 +322,47 @@ function detectCurrencyNumbers(file: ParsedFile): Issue | null {
   };
 }
 
+function detectHeaderIssues(file: ParsedFile): Issue | null {
+  const trimmed = file.headers.map(h => h.trim());
+
+  const hasWhitespace = file.headers.some((h, i) => h !== trimmed[i]);
+
+  const seenLower = new Set<string>();
+  let hasDuplicates = false;
+  for (const h of trimmed) {
+    const k = h.toLowerCase();
+    if (seenLower.has(k)) { hasDuplicates = true; break; }
+    seenLower.add(k);
+  }
+
+  const casingTypes = new Set<string>();
+  for (const h of trimmed) {
+    if (!h) continue;
+    if (/^[a-z][a-zA-Z0-9]*$/.test(h) && /[A-Z]/.test(h)) casingTypes.add('camel');
+    else if (/^[a-z][a-z0-9_]*$/.test(h)) casingTypes.add('snake');
+    else if (/^[A-Z][a-z]/.test(h)) casingTypes.add('title');
+    else if (/^[A-Z][A-Z0-9_]*$/.test(h)) casingTypes.add('upper');
+  }
+  const hasMixedCasing = casingTypes.size > 1;
+
+  if (!hasWhitespace && !hasDuplicates && !hasMixedCasing) return null;
+
+  const problems: string[] = [];
+  if (hasWhitespace) problems.push('whitespace');
+  if (hasDuplicates) problems.push('duplicates');
+  if (hasMixedCasing) problems.push('mixed naming conventions');
+
+  return {
+    id: 'header-issues',
+    label: 'Header formatting',
+    description: `Column headers have ${problems.join(', ')}. Cleaning will trim whitespace, deduplicate (appending _2, _3…), and normalise to Title Case.`,
+    severity: 'low',
+    count: file.headers.length,
+    affectedColumns: [],
+    enabled: true,
+  };
+}
+
 /* ───────────────────────────────────────────────────
    Public — run all detectors
 ─────────────────────────────────────────────────── */
@@ -336,7 +377,8 @@ export function analyze(file: ParsedFile): Issue[] {
     detectMixedCase,
     detectMixedBooleans,
     detectSpecialChars,
-    detectCurrencyNumbers,  // NEW
+    detectCurrencyNumbers,
+    detectHeaderIssues,  // NEW
   ];
 
   const issues: Issue[] = [];

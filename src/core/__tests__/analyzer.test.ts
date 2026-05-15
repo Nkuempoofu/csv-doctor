@@ -41,3 +41,29 @@ describe('detectCurrencyNumbers', () => {
     expect(issues.find(i => i.id === 'currency-numbers')).toBeUndefined();
   });
 });
+
+describe('detectHeaderIssues', () => {
+  it('flags headers with leading/trailing whitespace', () => {
+    const file = makeFile([' Name ', 'Age'], [['Alice', '30']]);
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'header-issues')).toBeDefined();
+  });
+
+  it('flags duplicate headers (case-insensitive)', () => {
+    const file = makeFile(['name', 'Name'], [['Alice', 'Smith']]);
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'header-issues')).toBeDefined();
+  });
+
+  it('flags mixed casing conventions', () => {
+    const file = makeFile(['first_name', 'LastName', 'AGE'], [['Alice', 'Smith', '30']]);
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'header-issues')).toBeDefined();
+  });
+
+  it('does not flag clean consistent headers', () => {
+    const file = makeFile(['First Name', 'Last Name', 'Age'], [['Alice', 'Smith', '30']]);
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'header-issues')).toBeUndefined();
+  });
+});

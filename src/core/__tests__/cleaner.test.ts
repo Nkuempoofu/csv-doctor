@@ -28,3 +28,29 @@ describe('clean — currency-numbers', () => {
     expect(result.rows[0][0]).toBe('Alice');
   });
 });
+
+describe('clean — header-issues', () => {
+  it('trims whitespace from headers', () => {
+    const file = makeFile([' Name ', ' Age '], [['Alice', '30']]);
+    const result = clean(file, { enabled: new Set(['header-issues']) });
+    expect(result.cleanedHeaders).toEqual(['Name', 'Age']);
+  });
+
+  it('title-cases headers', () => {
+    const file = makeFile(['first_name', 'last_name'], [['Alice', 'Smith']]);
+    const result = clean(file, { enabled: new Set(['header-issues']) });
+    expect(result.cleanedHeaders![0]).toBe('First_Name');
+  });
+
+  it('deduplicates colliding headers', () => {
+    const file = makeFile(['name', 'Name'], [['Alice', 'Smith']]);
+    const result = clean(file, { enabled: new Set(['header-issues']) });
+    expect(result.cleanedHeaders).toEqual(['Name', 'Name_2']);
+  });
+
+  it('returns undefined cleanedHeaders when fix not applied', () => {
+    const file = makeFile(['Name', 'Age'], [['Alice', '30']]);
+    const result = clean(file, { enabled: new Set([]) });
+    expect(result.cleanedHeaders).toBeUndefined();
+  });
+});
