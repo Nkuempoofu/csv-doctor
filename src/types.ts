@@ -66,3 +66,9 @@ export interface AnalyzerState {
   parsed: ParsedFile | null;
   issues: Issue[];
 }
+
+/** A single active filter slot — column name + match string. */
+export interface FilterSlot {
+  column: string;  // empty string means this slot is unset
+  value: string;
+}
