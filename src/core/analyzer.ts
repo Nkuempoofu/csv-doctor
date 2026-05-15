@@ -363,6 +363,64 @@ function detectHeaderIssues(file: ParsedFile): Issue | null {
   };
 }
 
+const PHONE_DETECT_RE = /^[\+\d][\d\s\-\(\)\.]{6,}$/;
+const EMAIL_BASIC_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function getPhoneFormatKey(v: string): string {
+  if (/^\+/.test(v)) return 'intl-plus';
+  if (/^\d{3}\s\d{3}\s\d{4}$/.test(v)) return 'spaced';
+  if (/^\d{3}-\d{3}-\d{4}$/.test(v)) return 'dashed';
+  if (/^\(\d{3}\)\s?\d{3}[-\s]?\d{4}$/.test(v)) return 'parens';
+  if (/^\d{10}$/.test(v)) return 'bare10';
+  if (/^\d{11}$/.test(v)) return 'bare11';
+  return 'other';
+}
+
+function detectContactFormats(file: ParsedFile): Issue | null {
+  const affected: string[] = [];
+  let totalCells = 0;
+
+  for (let c = 0; c < file.headers.length; c++) {
+    const nonEmpty = file.rows
+      .map(r => (r[c] ?? '').trim())
+      .filter(Boolean);
+    if (nonEmpty.length < 5) continue;
+
+    // Phone check
+    const phoneMatches = nonEmpty.filter(v => PHONE_DETECT_RE.test(v));
+    if (phoneMatches.length / nonEmpty.length >= 0.4) {
+      const formats = new Set(phoneMatches.map(getPhoneFormatKey));
+      if (formats.size >= 3) {
+        affected.push(file.headers[c] ?? `col_${c}`);
+        totalCells += phoneMatches.length;
+        continue;
+      }
+    }
+
+    // Email check
+    const emailMatches = nonEmpty.filter(v => v.includes('@'));
+    if (emailMatches.length / nonEmpty.length >= 0.4) {
+      const invalidEmails = nonEmpty.filter(v => v.includes('@') && !EMAIL_BASIC_RE.test(v));
+      if (invalidEmails.length > 0) {
+        affected.push(file.headers[c] ?? `col_${c}`);
+        totalCells += invalidEmails.length;
+      }
+    }
+  }
+
+  if (affected.length === 0) return null;
+
+  return {
+    id: 'contact-formats',
+    label: 'Phone / email formats',
+    description: `${affected.length} column${affected.length === 1 ? ' has' : 's have'} inconsistent phone number formats or invalid email addresses. Phone numbers will be normalised; invalid emails will be cleared to empty.`,
+    severity: 'medium',
+    count: totalCells,
+    affectedColumns: affected,
+    enabled: false,
+  };
+}
+
 /* ───────────────────────────────────────────────────
    Public — run all detectors
 ─────────────────────────────────────────────────── */
@@ -378,7 +436,8 @@ export function analyze(file: ParsedFile): Issue[] {
     detectMixedBooleans,
     detectSpecialChars,
     detectCurrencyNumbers,
-    detectHeaderIssues,  // NEW
+    detectHeaderIssues,
+    detectContactFormats,  // NEW
   ];
 
   const issues: Issue[] = [];

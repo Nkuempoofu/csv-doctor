@@ -67,3 +67,45 @@ describe('detectHeaderIssues', () => {
     expect(issues.find(i => i.id === 'header-issues')).toBeUndefined();
   });
 });
+
+describe('detectContactFormats', () => {
+  it('flags a phone column with 3+ distinct formats', () => {
+    const file = makeFile(
+      ['Phone'],
+      [
+        ['+27 82 123 4567'],
+        ['082-123-4567'],
+        ['(082) 123 4567'],
+        ['0821234567'],
+        ['+27821234567'],
+        ['082 123 4567'],
+      ]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'contact-formats')).toBeDefined();
+  });
+
+  it('flags an email column with invalid addresses', () => {
+    const file = makeFile(
+      ['Email'],
+      [
+        ['alice@example.com'],
+        ['bob@example.com'],
+        ['invalidemail@'],       // has @ but fails EMAIL_BASIC_RE
+        ['carol@example.com'],
+        ['dave@example.com'],
+      ]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'contact-formats')).toBeDefined();
+  });
+
+  it('does not flag a column that is not phone or email', () => {
+    const file = makeFile(
+      ['Notes'],
+      [['foo'], ['bar'], ['baz'], ['qux'], ['quux']]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'contact-formats')).toBeUndefined();
+  });
+});

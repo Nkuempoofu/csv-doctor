@@ -54,3 +54,32 @@ describe('clean — header-issues', () => {
     expect(result.cleanedHeaders).toBeUndefined();
   });
 });
+
+describe('clean — contact-formats', () => {
+  it('normalises SA local phone numbers to spaced format', () => {
+    const file = makeFile(
+      ['Phone'],
+      [['0821234567'], ['082-123-4567'], ['(082) 123 4567'], ['+27821234567'], ['082 123 4567']]
+    );
+    const result = clean(file, { enabled: new Set(['contact-formats']) });
+    expect(result.rows[0][0]).toBe('082 123 4567');
+  });
+
+  it('clears invalid email cells (those containing @ but failing basic regex)', () => {
+    const file = makeFile(
+      ['Email'],
+      [
+        ['alice@example.com'],
+        ['invalidemail@'],
+        ['bob@example.com'],
+        ['@bademailformat'],
+        ['carol@example.com'],
+      ]
+    );
+    const result = clean(file, { enabled: new Set(['contact-formats']) });
+    expect(result.rows[0][0]).toBe('alice@example.com'); // valid — unchanged
+    expect(result.rows[1][0]).toBe('');                  // invalid @ — cleared
+    expect(result.rows[3][0]).toBe('');                  // invalid @ — cleared
+    expect(result.rows[2][0]).toBe('bob@example.com');   // valid — unchanged
+  });
+});
