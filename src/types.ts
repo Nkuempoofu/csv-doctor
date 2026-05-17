@@ -83,3 +83,13 @@ export interface FilterSlot {
   value: string | string[];
   mode?: 'include' | 'exclude';  // default 'include' when absent
 }
+
+/** A single find-and-replace rule applied via the Find & Replace panel. */
+export interface FindReplaceRule {
+  id:            string;   // unique key for list rendering
+  column:        string;   // header name to restrict to; '' = all columns
+  find:          string;
+  replace:       string;
+  caseSensitive: boolean;
+  wholeCell:     boolean;  // true = whole cell must equal `find`; false = substring
+}
