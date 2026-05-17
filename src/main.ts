@@ -11,7 +11,12 @@ import type { ParsedFile, Issue, IssueId, CleanResult, FilterSlot } from './type
 import { parseCsv } from './core/parser';
 import { analyze } from './core/analyzer';
 import { clean } from './core/cleaner';
-import { exportCsv, suggestFilename } from './core/exporter';
+import {
+  exportCsv, suggestFilename,
+  exportJson, suggestJsonFilename,
+  exportXlsx, suggestXlsxFilename,
+} from './core/exporter';
+import type { DownloadBarOptions } from './ui/download-bar';
 import { getFilteredRows } from './lib/filter';
 import { createUploadZone } from './ui/upload';
 import { createIssuesPanel } from './ui/issues-panel';
@@ -30,6 +35,7 @@ interface AppState {
   parsed: ParsedFile | null;
   issues: Issue[];
   result: CleanResult | null;
+  prevResult: CleanResult | null;   // one-level undo
   toast: { message: string; tone: 'info' | 'error' | 'success' } | null;
   activeColumn: string | null;
   filterSlots: FilterSlot[];
@@ -40,6 +46,7 @@ const state: AppState = {
   parsed: null,
   issues: [],
   result: null,
+  prevResult: null,
   toast: null,
   activeColumn: null,
   filterSlots: [{ column: '', value: '' }],
@@ -170,13 +177,19 @@ function render() {
       handleColumnSelect,
     ));
 
-    main.appendChild(renderDownloadBar(
-      filteredRows.length,
-      state.result !== null,
-      hasActiveFilters(),
-      handleExport,
-      handleRevert,
-    ));
+    const dlOpts: DownloadBarOptions = {
+      filteredCount:    filteredRows.length,
+      hasResult:        state.result !== null,
+      hasFilters:       hasActiveFilters(),
+      hasPrevResult:    state.prevResult !== null,
+      onDownloadCsv:    handleExportCsv,
+      onDownloadJson:   handleExportJson,
+      onDownloadXlsx:   handleExportXlsx,
+      onDownloadReport: handleDownloadReport,
+      onRevert:         handleRevert,
+      onUndo:           handleUndo,
+    };
+    main.appendChild(renderDownloadBar(dlOpts));
   }
 
   app.appendChild(main);
@@ -372,8 +385,8 @@ function handleClean() {
     showToast('Toggle at least one fix on first.', 'info');
     return;
   }
+  state.prevResult = state.result;   // save snapshot before overwriting
   state.result = clean(state.parsed, { enabled });
-  // Reset activeColumn if it was removed by sparse-columns fix
   const cleanedHeaders = state.result.cleanedHeaders;
   if (cleanedHeaders && state.activeColumn && !cleanedHeaders.includes(state.activeColumn)) {
     state.activeColumn = null;
@@ -392,17 +405,48 @@ function handleRevert() {
   render();
 }
 
-function handleExport() {
+function handleExportCsv() {
   if (!state.parsed || !state.result) return;
   const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
-  const filteredRows = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
+  const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
   if (filteredRows.length === 0) return;
   const filename = suggestFilename(state.parsed.filename);
   exportCsv(state.parsed, filteredRows, filename, state.parsed.delimiter, displayHeaders);
-  const msg = hasActiveFilters()
+  showToast(hasActiveFilters()
     ? `Downloaded ${filteredRows.length.toLocaleString()} filtered rows as ${filename}`
-    : `Downloaded ${filename}`;
-  showToast(msg, 'success');
+    : `Downloaded ${filename}`, 'success');
+}
+
+function handleExportJson() {
+  if (!state.parsed || !state.result) return;
+  const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
+  const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
+  if (filteredRows.length === 0) return;
+  const filename = suggestJsonFilename(state.parsed.filename);
+  exportJson(state.parsed, filteredRows, filename, displayHeaders);
+  showToast(`Downloaded ${filename}`, 'success');
+}
+
+function handleExportXlsx() {
+  if (!state.parsed || !state.result) return;
+  const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
+  const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
+  if (filteredRows.length === 0) return;
+  const filename = suggestXlsxFilename(state.parsed.filename);
+  exportXlsx(state.parsed, filteredRows, filename, displayHeaders);
+  showToast(`Downloaded ${filename}`, 'success');
+}
+
+function handleUndo() {
+  state.result     = state.prevResult;
+  state.prevResult = null;
+  showToast('Last fix reverted.', 'info');
+  render();
+}
+
+function handleDownloadReport() {
+  // Stub — wired up in Task 11
+  showToast('Report coming soon.', 'info');
 }
 
 function handleReset() {

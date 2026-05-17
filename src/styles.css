@@ -1299,3 +1299,33 @@ button { font: inherit; cursor: pointer; }
   padding: 2rem;
   font-size: 0.9rem;
 }
+
+/* ── Download bar format buttons ─────────────────── */
+.dl-format-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.dl-format-group .btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+.btn.btn-secondary {
+  background: var(--surface-2, #1e293b);
+  color: var(--text-2, #94a3b8);
+  border: 1px solid var(--border, #334155);
+}
+
+.btn.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-3, #273549);
+  color: var(--text-1, #e2e8f0);
+}
+
+.btn.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
