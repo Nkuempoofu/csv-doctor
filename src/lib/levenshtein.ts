@@ -3,7 +3,20 @@
  *
  * buildFuzzyReplacements finds near-duplicate string values
  * (e.g. "Soth Africa" vs "South Africa") and maps each misspelling to the
- * most-frequent canonical form, using Union-Find for transitive grouping.
+ * canonical form, using Union-Find for transitive grouping.
+ *
+ * Canonical selection strategy
+ * ─────────────────────────────
+ * 1. Longer string wins — the overwhelming majority of real-world typos are
+ *    deletions (a key was skipped), so the correct word is usually the longer
+ *    one ("South Africa" > "Soth Africa", "Finance" > "Finace").
+ * 2. Equal length → more frequent wins (case-folded, so "South Africa" +
+ *    "south africa" are summed) — handles substitutions and transpositions.
+ * 3. Equal length + equal frequency → alphabetically first.
+ *
+ * The edit threshold is strictly 1 character. Allowing distance 2 for longer
+ * strings risks false positives like "South Africa" / "North Africa" (distance
+ * 2 — two substitutions), which are legitimately distinct values.
  */
 
 /**
@@ -20,7 +33,6 @@ export function levenshtein(a: string, b: string): number {
   const lenA = a.length;
   const lenB = b.length;
 
-  // prev[i] = cost of converting a[0..i-1] to b[0..j-1] at the previous j
   const prev: number[] = Array.from({ length: lenA + 1 }, (_, i) => i);
 
   for (let j = 1; j <= lenB; j++) {
@@ -40,24 +52,6 @@ export function levenshtein(a: string, b: string): number {
   return prev[lenA];
 }
 
-/**
- * Maximum edit distance allowed for two strings to be considered near-duplicates.
- * Longer values can tolerate more edits.
- */
-function editThreshold(a: string, b: string): number {
-  return Math.max(a.length, b.length) >= 8 ? 2 : 1;
-}
-
-/**
- * Minimum ratio of canonical frequency to misspelling frequency required
- * before we replace the misspelling with the canonical.
- *
- * A ratio of 3 means the dominant spelling must appear at least 3× as often
- * as the variant being replaced. This prevents two similarly-frequent values
- * (which might both be legitimate) from being merged based on a narrow lead.
- */
-const MIN_FREQUENCY_RATIO = 3;
-
 /* ── Union-Find (path-compressed) ────────────────────── */
 
 class UnionFind {
@@ -66,7 +60,7 @@ class UnionFind {
   find(x: string): string {
     if (!this.parent.has(x)) return x;
     const root = this.find(this.parent.get(x)!);
-    this.parent.set(x, root); // path compression
+    this.parent.set(x, root);
     return root;
   }
 
@@ -79,27 +73,29 @@ class UnionFind {
 
 /**
  * Given a list of unique string values and their occurrence counts, return a
- * Map<misspelling → canonical> where canonical is the most-frequent member of
- * each near-duplicate group.
+ * Map<misspelling → canonical> for every near-duplicate cluster.
  *
- * Key design decisions:
+ * Design decisions:
  *
- * 1. **Case-folded frequency totals** — "South Africa" (3) + "south africa" (5) are
- *    the same word; their combined count (8) is used when deciding which spelling wins
- *    over "Soth Africa" (2). Without this, a misspelling could appear to "win" simply
- *    because the correct spelling's count is split across case variants.
+ * • **Strict edit distance of 1** — only pairs that differ by exactly one
+ *   character insertion, deletion, or substitution are grouped. This rules out
+ *   false positives like "South Africa" / "North Africa" (distance 2).
  *
- * 2. **Minimum frequency ratio** — the canonical must appear at least
- *    MIN_FREQUENCY_RATIO × more often than the variant being replaced. Values with
- *    similar frequencies are left untouched (they may be two legitimately distinct
- *    entries, not a typo at all).
+ * • **Case-folded frequency totals** — "South Africa" (3) + "south africa" (5)
+ *   = 8 combined. This prevents the correct spelling's count from being split
+ *   across capitalisation variants, making it appear less frequent than the typo.
  *
- * 3. **Lookup keys** — the returned map stores both the exact original casing and
- *    the lowercase form as keys, so callers can do a case-insensitive fallback
- *    without scanning the whole map.
+ * • **Longer string is canonical** — deletion typos (the most common kind) make
+ *   the correct word longer than the misspelling. This heuristic picks the right
+ *   side without needing a dictionary. Equal-length pairs fall back to frequency.
  *
- * Values shorter than `minLen` characters are skipped to reduce false positives.
- * Complexity: O(n²) — acceptable because callers cap unique values at 50 per column.
+ * • **No minimum-ratio guard** — within a strict edit distance of 1, the chance
+ *   of two truly-distinct values is very low. Requiring a frequency ratio would
+ *   silently skip obvious typos when a misspelling is common in the dataset.
+ *
+ * Values shorter than `minLen` are skipped to avoid false positives on very
+ * short tokens. Complexity: O(n²) — acceptable because callers cap at 50 unique
+ * values per column.
  */
 export function buildFuzzyReplacements(
   unique: string[],
@@ -110,10 +106,8 @@ export function buildFuzzyReplacements(
   if (candidates.length < 2) return new Map();
 
   // Step 1: Aggregate frequency across capitalisation variants.
-  // All casing forms of the same word share a single combined count so that the
-  // canonical-selection step sees the true popularity of each spelling.
   const foldedTotal = new Map<string, number>();  // lowercase → combined count
-  const foldedBest  = new Map<string, string>();  // lowercase → most-frequent original casing
+  const foldedBest  = new Map<string, string>();  // lowercase → most-freq original casing
 
   for (const v of candidates) {
     const key = v.toLowerCase();
@@ -126,15 +120,14 @@ export function buildFuzzyReplacements(
   const foldedKeys = Array.from(foldedTotal.keys());
   if (foldedKeys.length < 2) return new Map();
 
-  // Step 2: Union-Find over deduplicated lowercase forms.
+  // Step 2: Union-Find over deduplicated lowercase forms — strict distance 1 only.
   const uf = new UnionFind();
 
   for (let i = 0; i < foldedKeys.length; i++) {
     for (let j = i + 1; j < foldedKeys.length; j++) {
       const a = foldedKeys[i];
       const b = foldedKeys[j];
-      const dist = levenshtein(a, b); // both already lowercase
-      if (dist > 0 && dist <= editThreshold(a, b)) {
+      if (levenshtein(a, b) === 1) {
         uf.union(a, b);
       }
     }
@@ -148,41 +141,37 @@ export function buildFuzzyReplacements(
     groups.get(root)!.push(v);
   }
 
-  // Step 4: For each near-duplicate cluster, pick canonical and build the map.
+  // Step 4: Build replacement map.
   const result = new Map<string, string>();
 
   for (const members of groups.values()) {
     if (members.length < 2) continue;
 
-    // Canonical = highest combined frequency.
-    // Tie-break: longer string (more complete, more likely the full/correct word),
-    // then alphabetically earliest.
+    // Canonical selection:
+    //   1. Longer string (deletion typo assumption — correct word is usually longer)
+    //   2. Higher case-folded frequency (tie-break for equal lengths)
+    //   3. Alphabetically first (final tie-break)
     const canonicalKey = members.reduce((best, v) => {
+      const lenV    = v.length;
+      const lenBest = best.length;
+      if (lenV    > lenBest) return v;
+      if (lenBest > lenV)    return best;
+      // Same length — use combined frequency
       const cntV    = foldedTotal.get(v)    ?? 0;
       const cntBest = foldedTotal.get(best) ?? 0;
-      if (cntV > cntBest) return v;
-      if (cntV === cntBest && v.length > best.length) return v;
-      if (cntV === cntBest && v.length === best.length && v < best) return v;
-      return best;
+      if (cntV    > cntBest) return v;
+      if (cntBest > cntV)    return best;
+      return v < best ? v : best; // alphabetical
     });
 
-    const canonicalCount = foldedTotal.get(canonicalKey)  ?? 0;
-    const canonicalOrig  = foldedBest.get(canonicalKey)!; // best original casing
+    const canonicalOrig = foldedBest.get(canonicalKey)!;
 
     for (const memberKey of members) {
       if (memberKey === canonicalKey) continue;
 
-      const memberCount = foldedTotal.get(memberKey) ?? 0;
-
-      // Guard: only replace when the canonical is clearly dominant.
-      // If the counts are close, the "misspelling" may be a legitimate distinct value.
-      if (memberCount > 0 && canonicalCount / memberCount < MIN_FREQUENCY_RATIO) continue;
-
-      // Store the lowercase key so callers can do a case-insensitive lookup.
+      // Store both the lowercase key (enables case-insensitive lookup) and every
+      // exact-casing variant present in the source data (enables exact lookup).
       result.set(memberKey, canonicalOrig);
-
-      // Also store every exact-casing variant present in the source data so
-      // the lookup succeeds even without lowercasing the cell value.
       for (const orig of candidates) {
         if (orig !== memberKey && orig.toLowerCase() === memberKey) {
           result.set(orig, canonicalOrig);
