@@ -503,6 +503,43 @@ function detectSparseColumns(file: ParsedFile): Issue | null {
   };
 }
 
+function detectNumberFormat(file: ParsedFile): Issue | null {
+  // EU format: dot as thousands separator, comma as decimal separator.
+  // Strict pattern: must have both dots-as-thousands AND comma-as-decimal (e.g. "1.234,56")
+  const EU_STRICT_RE = /^\d{1,3}(\.\d{3})+,\d+$/;
+  // Broad pattern: also matches thousands-only (e.g. "1.234")
+  const EU_BROAD_RE  = /^\d{1,3}(\.\d{3})+(,\d+)?$/;
+
+  const affected: string[] = [];
+  let totalCells = 0;
+
+  for (let c = 0; c < file.headers.length; c++) {
+    const nonEmpty = file.rows.map(r => (r[c] ?? '').trim()).filter(Boolean);
+    if (nonEmpty.length < 3) continue;
+
+    // Require at least 20% of values to have the explicit decimal comma (strict pattern).
+    // This prevents false-positives on values like "3.141" (regular decimals).
+    const strictMatches = nonEmpty.filter(v => EU_STRICT_RE.test(v)).length;
+    if (strictMatches / nonEmpty.length >= 0.2) {
+      const broadMatches = nonEmpty.filter(v => EU_BROAD_RE.test(v)).length;
+      affected.push(file.headers[c] ?? `col_${c}`);
+      totalCells += broadMatches;
+    }
+  }
+
+  if (affected.length === 0) return null;
+
+  return {
+    id: 'number-format',
+    label: 'EU number format',
+    description: `${affected.length} column${affected.length === 1 ? ' uses' : 's use'} European number formatting (e.g. "1.234,56"). Cleaning will convert to standard decimal notation (1234.56).`,
+    severity: 'medium',
+    count: totalCells,
+    affectedColumns: affected,
+    enabled: true,
+  };
+}
+
 /* ───────────────────────────────────────────────────
    Public — run all detectors
 ─────────────────────────────────────────────────── */
@@ -518,6 +555,7 @@ export function analyze(file: ParsedFile): Issue[] {
     detectMixedBooleans,
     detectSpecialChars,
     detectCurrencyNumbers,
+    detectNumberFormat,       // ← add here
     detectHeaderIssues,
     detectContactFormats,
     detectSparseColumns,

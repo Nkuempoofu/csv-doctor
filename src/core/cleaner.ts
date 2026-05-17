@@ -14,6 +14,14 @@ import { buildFuzzyReplacements } from '../lib/levenshtein';
 
 const PHONE_DETECT_RE = /^[\+\d][\d\s\-\(\)\.]{6,}$/;
 const EMAIL_BASIC_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EU_NUMBER_RE = /^\d{1,3}(\.\d{3})+(,\d+)?$/;
+
+function fixEuropeanNumber(value: string): string {
+  const v = value.trim();
+  if (!EU_NUMBER_RE.test(v)) return value;
+  // Remove thousands dots; replace decimal comma with dot.
+  return v.replace(/\./g, '').replace(',', '.');
+}
 
 interface CleanOptions {
   enabled: Set<IssueId>;
@@ -327,6 +335,11 @@ export function clean(file: ParsedFile, opts: CleanOptions): CleanResult {
         if (fixed !== next) next = fixed;
       }
 
+      if (enabled.has('number-format')) {
+        const fixed = fixEuropeanNumber(next);
+        if (fixed !== next) next = fixed;
+      }
+
       if (enabled.has('contact-formats') && contactColTypes) {
         const colType = contactColTypes[c];
         if (colType === 'phone' && PHONE_DETECT_RE.test(next)) {
@@ -382,6 +395,7 @@ function pickReason(before: string, after: string): IssueId {
   if (after.toLowerCase() === before.toLowerCase() && after !== before) return 'mixed-case';
   if (/^-?\d+(\.\d+)?$/.test(after) && /[£$€¥R,]/.test(before)) return 'currency-numbers';
   if (PHONE_DETECT_RE.test(before) && /^\d[\d\s+]*$/.test(after)) return 'contact-formats';
+  if (EU_NUMBER_RE.test(before) && /^\d+(\.\d+)?$/.test(after)) return 'number-format';
   // Fuzzy replacement: different strings, not covered by the cases above
   if (before !== after && before.trim() !== '' && after.trim() !== '') return 'fuzzy-values';
   return 'special-chars';

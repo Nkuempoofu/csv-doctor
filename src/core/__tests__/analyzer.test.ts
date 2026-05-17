@@ -137,3 +137,31 @@ describe('detectSparseColumns', () => {
     expect(analyze(file).find(i => i.id === 'sparse-columns')).toBeUndefined();
   });
 });
+
+describe('detectNumberFormat', () => {
+  it('flags a column with EU thousands/decimal formatting', () => {
+    const file = makeFile(
+      ['Revenue'],
+      [['1.234,56'], ['2.000,00'], ['10.500,75'], ['3.100,00']]
+    );
+    const issues = analyze(file);
+    const issue = issues.find(i => i.id === 'number-format');
+    expect(issue).toBeDefined();
+    expect(issue!.affectedColumns).toContain('Revenue');
+  });
+
+  it('does not flag a column with US/plain numbers', () => {
+    const file = makeFile(
+      ['Revenue'],
+      [['1234.56'], ['2000.00'], ['10500.75']]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'number-format')).toBeUndefined();
+  });
+
+  it('does not flag a column with fewer than 3 non-empty values', () => {
+    const file = makeFile(['Revenue'], [['1.234,56'], ['']]);
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'number-format')).toBeUndefined();
+  });
+});

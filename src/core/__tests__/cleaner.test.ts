@@ -112,3 +112,29 @@ describe('clean — sparse-columns', () => {
     expect(result.rows[0]).toEqual(['']);
   });
 });
+
+describe('clean — number-format', () => {
+  it('converts EU thousands+decimal format to plain number', () => {
+    const file = makeFile(['Amount'], [['1.234,56'], ['2.000,00'], ['10.500,75']]);
+    const result = clean(file, { enabled: new Set(['number-format']) });
+    expect(result.rows[0][0]).toBe('1234.56');
+    expect(result.rows[1][0]).toBe('2000.00');
+    expect(result.rows[2][0]).toBe('10500.75');
+  });
+
+  it('converts EU thousands-only format (no decimal)', () => {
+    const file = makeFile(['Count'], [['1.000'], ['20.000'], ['300.000']]);
+    const result = clean(file, { enabled: new Set(['number-format']) });
+    expect(result.rows[0][0]).toBe('1000');
+    expect(result.rows[1][0]).toBe('20000');
+    expect(result.rows[2][0]).toBe('300000');
+  });
+
+  it('leaves plain numbers and US-format numbers untouched', () => {
+    const file = makeFile(['Amount'], [['1,234.56'], ['3.14'], ['100']]);
+    const result = clean(file, { enabled: new Set(['number-format']) });
+    expect(result.rows[0][0]).toBe('1,234.56');
+    expect(result.rows[1][0]).toBe('3.14');
+    expect(result.rows[2][0]).toBe('100');
+  });
+});

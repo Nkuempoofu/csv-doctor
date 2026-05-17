@@ -34,7 +34,10 @@ export type IssueId =
   | 'header-issues'
   | 'contact-formats'
   | 'sparse-columns'
-  | 'fuzzy-values';
+  | 'fuzzy-values'
+  | 'number-format'
+  | 'duplicate-columns'
+  | 'find-replace';
 
 export interface Issue {
   id: IssueId;
