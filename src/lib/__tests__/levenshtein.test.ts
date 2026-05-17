@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { levenshtein, buildFuzzyReplacements } from '../levenshtein';
+import { spellingScore, isKnownWord } from '../dictionary';
+
+// ─── levenshtein ────────────────────────────────────────────────────────────
 
 describe('levenshtein', () => {
   it('returns 0 for identical strings', () => {
@@ -34,21 +37,116 @@ describe('levenshtein', () => {
     expect(levenshtein('kitten', 'sitting')).toBe(3);
   });
 
-  it('detects "soth africa" vs "south africa" as distance 1', () => {
+  it('"soth africa" vs "south africa" is distance 1', () => {
     expect(levenshtein('soth africa', 'south africa')).toBe(1);
   });
 
-  it('detects "finace" vs "finance" as distance 1', () => {
+  it('"finace" vs "finance" is distance 1', () => {
     expect(levenshtein('finace', 'finance')).toBe(1);
   });
 
-  it('"south africa" vs "north africa" is distance 2', () => {
-    // Two substitutions — must NOT be grouped by the fuzzy matcher
+  it('"finanace" vs "finance" is distance 1 (extra letter)', () => {
+    expect(levenshtein('finanace', 'finance')).toBe(1);
+  });
+
+  it('"persn" vs "person" is distance 1', () => {
+    expect(levenshtein('persn', 'person')).toBe(1);
+  });
+
+  it('"south africa" vs "north africa" is distance 2 — must NOT be merged', () => {
     expect(levenshtein('south africa', 'north africa')).toBe(2);
   });
 });
 
-describe('buildFuzzyReplacements — core merging', () => {
+// ─── dictionary ─────────────────────────────────────────────────────────────
+
+describe('isKnownWord', () => {
+  it('recognises common English words', () => {
+    expect(isKnownWord('finance')).toBe(true);
+    expect(isKnownWord('marketing')).toBe(true);
+    expect(isKnownWord('sales')).toBe(true);
+    expect(isKnownWord('south')).toBe(true);
+    expect(isKnownWord('africa')).toBe(true);
+    expect(isKnownWord('germany')).toBe(true);
+    expect(isKnownWord('person')).toBe(true);
+    expect(isKnownWord('brazil')).toBe(true);
+  });
+
+  it('does not recognise typos', () => {
+    expect(isKnownWord('finanace')).toBe(false);
+    expect(isKnownWord('finace')).toBe(false);
+    expect(isKnownWord('soth')).toBe(false);
+    expect(isKnownWord('persn')).toBe(false);
+    expect(isKnownWord('germony')).toBe(false);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isKnownWord('Finance')).toBe(true);
+    expect(isKnownWord('AFRICA')).toBe(true);
+  });
+});
+
+describe('spellingScore', () => {
+  it('returns 1.0 for fully known values', () => {
+    expect(spellingScore('finance')).toBe(1);
+    expect(spellingScore('south africa')).toBe(1);
+    expect(spellingScore('germany')).toBe(1);
+  });
+
+  it('returns 0.0 for fully unknown values', () => {
+    expect(spellingScore('finanace')).toBe(0);
+    expect(spellingScore('finace')).toBe(0);
+    expect(spellingScore('persn')).toBe(0);
+  });
+
+  it('returns partial score for mixed values', () => {
+    // "Soth" unknown, "Africa" known → 0.5
+    expect(spellingScore('soth africa')).toBeCloseTo(0.5);
+  });
+
+  it('returns 0.5 for purely numeric/symbolic values (neutral)', () => {
+    expect(spellingScore('12345')).toBe(0.5);
+    expect(spellingScore('N/A')).toBe(0.5);
+  });
+});
+
+// ─── buildFuzzyReplacements — core correctness ──────────────────────────────
+
+describe('buildFuzzyReplacements — dictionary-driven canonical selection', () => {
+  it('Finance wins over Finace (Finance is a real word, Finace is not)', () => {
+    const counts = new Map([['Finance', 5], ['Finace', 10]]);
+    const result = buildFuzzyReplacements(['Finance', 'Finace'], counts);
+    expect(result.get('Finace')).toBe('Finance');
+    expect(result.has('Finance')).toBe(false);
+  });
+
+  it('Finance wins over Finanace (Finance is a real word, Finanace is not)', () => {
+    // "Finanace" is longer than "Finance" — old length-first heuristic would pick Finanace
+    // Dictionary-first correctly picks Finance
+    const counts = new Map([['Finance', 3], ['Finanace', 20]]);
+    const result = buildFuzzyReplacements(['Finance', 'Finanace'], counts);
+    expect(result.get('Finanace')).toBe('Finance');
+    expect(result.has('Finance')).toBe(false);
+  });
+
+  it('South Africa wins over Soth Africa (Soth is not a real word)', () => {
+    const counts = new Map([['South Africa', 5], ['Soth Africa', 20]]);
+    const result = buildFuzzyReplacements(['South Africa', 'Soth Africa'], counts);
+    expect(result.get('Soth Africa')).toBe('South Africa');
+  });
+
+  it('Person wins over Persn (Persn is not a real word)', () => {
+    const counts = new Map([['Person', 3], ['Persn', 15]]);
+    const result = buildFuzzyReplacements(['Person', 'Persn'], counts);
+    expect(result.get('Persn')).toBe('Person');
+  });
+
+  it('Germany wins over Germony (Germony is not a real word)', () => {
+    const counts = new Map([['Germany', 4], ['Germony', 4]]);
+    const result = buildFuzzyReplacements(['Germany', 'Germony'], counts);
+    expect(result.get('Germony')).toBe('Germany');
+  });
+
   it('returns empty map for fewer than 2 candidates', () => {
     expect(buildFuzzyReplacements(['hi'], new Map([['hi', 5]])).size).toBe(0);
   });
@@ -58,123 +156,58 @@ describe('buildFuzzyReplacements — core merging', () => {
     expect(buildFuzzyReplacements(['ab', 'ac'], counts).size).toBe(0);
   });
 
-  it('maps "Soth Africa" → "South Africa" (correct spelling is longer)', () => {
-    const counts = new Map([['South Africa', 5], ['Soth Africa', 3]]);
-    const result = buildFuzzyReplacements(['South Africa', 'Soth Africa'], counts);
-    expect(result.get('Soth Africa')).toBe('South Africa');
-    expect(result.has('South Africa')).toBe(false);
-  });
-
-  it('maps "Soth Africa" → "South Africa" even when misspelling is more frequent', () => {
-    // "South Africa" is longer so it wins regardless of frequency
-    const counts = new Map([['South Africa', 3], ['Soth Africa', 20]]);
-    const result = buildFuzzyReplacements(['South Africa', 'Soth Africa'], counts);
-    expect(result.get('Soth Africa')).toBe('South Africa');
-    expect(result.has('South Africa')).toBe(false);
-  });
-
-  it('maps "Finace" → "Finance" (correct spelling is longer)', () => {
-    const counts = new Map([['Finance', 8], ['Finace', 1]]);
-    const result = buildFuzzyReplacements(['Finance', 'Finace'], counts);
-    expect(result.get('Finace')).toBe('Finance');
-    expect(result.has('Finance')).toBe(false);
-  });
-
-  it('maps "Finace" → "Finance" even when misspelling dominates the data', () => {
-    const counts = new Map([['Finance', 2], ['Finace', 50]]);
-    const result = buildFuzzyReplacements(['Finance', 'Finace'], counts);
-    expect(result.get('Finace')).toBe('Finance');
-  });
-
-  it('does NOT merge values that differ by 2 edits (e.g. South Africa / North Africa)', () => {
-    // levenshtein("south africa", "north africa") = 2 — must not be grouped
+  it('does NOT merge values that differ by 2 edits (e.g. South/North Africa)', () => {
     const counts = new Map([['South Africa', 100], ['North Africa', 50]]);
     const result = buildFuzzyReplacements(['South Africa', 'North Africa'], counts);
     expect(result.size).toBe(0);
   });
 
-  it('does not group strings that are clearly unrelated', () => {
+  it('does not group completely unrelated words', () => {
     const counts = new Map([['london', 30], ['berlin', 10]]);
-    const result = buildFuzzyReplacements(['london', 'berlin'], counts);
-    expect(result.size).toBe(0);
-  });
-
-  it('skips values shorter than minLen', () => {
-    const counts = new Map([['ab', 5], ['ac', 3]]);
-    expect(buildFuzzyReplacements(['ab', 'ac'], counts).size).toBe(0);
+    expect(buildFuzzyReplacements(['london', 'berlin'], counts).size).toBe(0);
   });
 });
 
-describe('buildFuzzyReplacements — canonical selection', () => {
-  it('same-length values: more frequent becomes canonical', () => {
-    // "Germany" and "Germony" — same length, frequency decides
-    const counts = new Map([['Germany', 20], ['Germony', 2]]);
-    const result = buildFuzzyReplacements(['Germany', 'Germony'], counts);
-    expect(result.get('Germony')).toBe('Germany');
-    expect(result.has('Germany')).toBe(false);
-  });
-
-  it('same-length values: misspelling is canonical when it dominates (rare but valid)', () => {
-    // Same-length + misspelling is more frequent → frequency wins (we can't know which is "correct")
-    const counts = new Map([['Germony', 20], ['Germany', 2]]);
-    const result = buildFuzzyReplacements(['Germany', 'Germony'], counts);
-    expect(result.get('Germany')).toBe('Germony');
-    expect(result.has('Germony')).toBe(false);
-  });
-
-  it('same-length + equal frequency: alphabetically first is canonical', () => {
-    const counts = new Map([['alpha', 5], ['alpho', 5]]);
-    const result = buildFuzzyReplacements(['alpha', 'alpho'], counts);
-    expect(result.get('alpho')).toBe('alpha');
-  });
-
-  it('length beats frequency: longer string wins even if less frequent', () => {
-    // "South Africa" (12) beats "Soth Africa" (11) on length, regardless of count
-    const counts = new Map([['South Africa', 1], ['Soth Africa', 999]]);
-    const result = buildFuzzyReplacements(['South Africa', 'Soth Africa'], counts);
-    expect(result.get('Soth Africa')).toBe('South Africa');
+describe('buildFuzzyReplacements — frequency fallback (both words valid)', () => {
+  it('when both spellings are valid words, more frequent wins', () => {
+    // "Sales" (valid) and "Soles" (valid) — both score 1.0 — use frequency
+    const counts = new Map([['sales', 30], ['soles', 3]]);
+    const result = buildFuzzyReplacements(['sales', 'soles'], counts);
+    expect(result.get('soles')).toBe('sales');
   });
 });
 
 describe('buildFuzzyReplacements — case-folded aggregation', () => {
-  it('aggregates case variants to prevent frequency splitting', () => {
-    // "South Africa" (4) + "south africa" (5) = 9 combined vs "Soth Africa" (8)
-    // South Africa is also LONGER, so it wins doubly.
+  it('sums frequency across case variants before scoring', () => {
     const counts = new Map([
-      ['South Africa',  4],
-      ['south africa',  5],
-      ['Soth Africa',   8],
+      ['Finance', 5],
+      ['finance', 3],  // same word, different casing
+      ['Finace',  1],  // typo
     ]);
-    const result = buildFuzzyReplacements(
-      ['South Africa', 'south africa', 'Soth Africa'],
-      counts
-    );
-    // canonicalOrig = "south africa" (most-frequent individual casing: 5 > 4)
-    expect(result.get('Soth Africa')).toBe('south africa');
-    // Canonical variants are never replaced
-    expect(result.has('South Africa')).toBe(false);
-    expect(result.has('south africa')).toBe(false);
+    const result = buildFuzzyReplacements(['Finance', 'finance', 'Finace'], counts);
+    // Finance scores 1.0, Finace scores 0.0 → Finance wins regardless of frequency
+    expect(result.get('Finace')).toBe('Finance');   // exact casing key
+    expect(result.get('finace')).toBe('Finance');   // lowercase key also stored
+    expect(result.has('Finance')).toBe(false);
+    expect(result.has('finance')).toBe(false);
   });
 
   it('stores lowercase key for case-insensitive fallback lookup', () => {
     const counts = new Map([['South Africa', 30], ['Soth Africa', 3]]);
     const result = buildFuzzyReplacements(['South Africa', 'Soth Africa'], counts);
-    // Lowercase key is always present for cleaner fallback
     expect(result.get('soth africa')).toBe('South Africa');
   });
 });
 
 describe('buildFuzzyReplacements — transitive grouping', () => {
-  it('transitively merges a chain of near-duplicates', () => {
-    // South Africa (30) → Soth Africa (3) → South Afrca (1)
+  it('chains near-duplicates transitively', () => {
     const counts = new Map([
       ['South Africa', 30],
       ['Soth Africa',   3],
       ['South Afrca',   1],
     ]);
     const result = buildFuzzyReplacements(
-      ['South Africa', 'Soth Africa', 'South Afrca'],
-      counts
+      ['South Africa', 'Soth Africa', 'South Afrca'], counts
     );
     expect(result.get('Soth Africa')).toBe('South Africa');
     expect(result.get('South Afrca')).toBe('South Africa');
