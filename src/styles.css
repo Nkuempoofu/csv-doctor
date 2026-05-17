@@ -1329,3 +1329,99 @@ button { font: inherit; cursor: pointer; }
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── Find & Replace panel ────────────────────────── */
+.find-replace-panel {
+  margin: 0 0 1rem;
+  border: 1px solid var(--border, #334155);
+  border-radius: 0.5rem;
+  background: var(--surface-1, #0f172a);
+  overflow: hidden;
+}
+
+.find-replace-header {
+  padding: 0.5rem 1rem;
+}
+
+.find-replace-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.fr-badge {
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  font-weight: 700;
+}
+
+.find-replace-body {
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--border, #334155);
+}
+
+.fr-builder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.fr-select,
+.fr-input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border, #334155);
+  border-radius: 0.35rem;
+  background: var(--surface-2, #1e293b);
+  color: var(--text-1, #e2e8f0);
+  font-size: 0.82rem;
+  min-width: 120px;
+}
+
+.fr-input { flex: 1 1 140px; }
+
+.fr-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-2, #94a3b8);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fr-add-btn { font-size: 0.8rem; }
+
+.fr-rules-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.fr-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--surface-2, #1e293b);
+  border-radius: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.fr-rule-col    { color: var(--text-3, #64748b); font-size: 0.72rem; min-width: 60px; }
+.fr-rule-find   { color: #f87171; font-family: monospace; }
+.fr-rule-arrow  { color: var(--text-3, #64748b); }
+.fr-rule-replace{ color: #4ade80; font-family: monospace; }
+.fr-rule-flags  { color: var(--text-3, #64748b); font-size: 0.7rem; margin-left: auto; }
+.fr-rule-remove { padding: 0.1rem 0.35rem; font-size: 0.75rem; margin-left: 0.25rem; }
+
+.fr-apply-btn { width: 100%; justify-content: center; }

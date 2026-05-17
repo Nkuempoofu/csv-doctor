@@ -7,7 +7,7 @@
 
 import './styles.css';
 
-import type { ParsedFile, Issue, IssueId, CleanResult, FilterSlot } from './types';
+import type { ParsedFile, Issue, IssueId, CleanResult, FilterSlot, FindReplaceRule } from './types';
 import { parseCsv } from './core/parser';
 import { analyze } from './core/analyzer';
 import { clean } from './core/cleaner';
@@ -26,6 +26,9 @@ import { renderAnalysisPanel } from './ui/analysis-panel';
 import { renderDownloadBar } from './ui/download-bar';
 import { renderStats } from './ui/stats';
 import { bytes } from './lib/format';
+import { applyFindReplace } from './lib/find-replace';
+import { renderFindReplacePanel } from './ui/find-replace-panel';
+import type { FindReplacePanelCallbacks } from './ui/find-replace-panel';
 
 /* ───────────────────────────────────────────────────
    State
@@ -40,6 +43,8 @@ interface AppState {
   activeColumn: string | null;
   filterSlots: FilterSlot[];
   sidebarOpen: boolean;
+  findReplaceRules: FindReplaceRule[];
+  findReplaceOpen:  boolean;
 }
 
 const state: AppState = {
@@ -51,6 +56,8 @@ const state: AppState = {
   activeColumn: null,
   filterSlots: [{ column: '', value: '' }],
   sidebarOpen: true,
+  findReplaceRules: [],
+  findReplaceOpen:  false,
 };
 
 /* ───────────────────────────────────────────────────
@@ -168,6 +175,19 @@ function render() {
         onRemoveSlot: handleRemoveSlot,
         onClearAll: handleClearAllFilters,
       }
+    ));
+
+    const frCallbacks: FindReplacePanelCallbacks = {
+      onAddRule:    handleFRAddRule,
+      onRemoveRule: handleFRRemoveRule,
+      onApply:      handleFRApply,
+    };
+    main.appendChild(renderFindReplacePanel(
+      displayHeaders,
+      state.findReplaceRules,
+      state.findReplaceOpen,
+      handleFRToggle,
+      frCallbacks,
     ));
 
     main.appendChild(renderAnalysisPanel(
@@ -399,9 +419,12 @@ function handleClean() {
 }
 
 function handleRevert() {
-  state.result = null;
-  state.activeColumn = null;
-  state.filterSlots = [{ column: '', value: '', mode: 'include' }];
+  state.result           = null;
+  state.prevResult       = null;
+  state.activeColumn     = null;
+  state.filterSlots      = [{ column: '', value: '', mode: 'include' }];
+  state.findReplaceRules = [];
+  state.findReplaceOpen  = false;
   render();
 }
 
@@ -449,13 +472,70 @@ function handleDownloadReport() {
   showToast('Report coming soon.', 'info');
 }
 
+function handleFRToggle() {
+  state.findReplaceOpen = !state.findReplaceOpen;
+  render();
+}
+
+function handleFRAddRule(rule: Omit<FindReplaceRule, 'id'>) {
+  state.findReplaceRules = [
+    ...state.findReplaceRules,
+    { ...rule, id: String(Date.now()) },
+  ];
+  render();
+}
+
+function handleFRRemoveRule(id: string) {
+  state.findReplaceRules = state.findReplaceRules.filter(r => r.id !== id);
+  render();
+}
+
+function handleFRApply() {
+  if (!state.parsed) return;
+  if (state.findReplaceRules.length === 0) {
+    showToast('Add at least one rule first.', 'info');
+    return;
+  }
+  const sourceRows    = state.result?.rows ?? state.parsed.rows;
+  const sourceHeaders = state.result?.cleanedHeaders ?? state.parsed.headers;
+  const { rows: newRows, changes } = applyFindReplace(sourceRows, sourceHeaders, state.findReplaceRules);
+
+  if (changes.length === 0) {
+    showToast('No matches found.', 'info');
+    return;
+  }
+
+  state.prevResult = state.result;
+  if (state.result) {
+    state.result = {
+      ...state.result,
+      rows:         newRows,
+      changes:      [...state.result.changes, ...changes],
+      appliedFixes: [...new Set([...state.result.appliedFixes, 'find-replace' as IssueId])],
+    };
+  } else {
+    state.result = {
+      rows:              newRows,
+      removedRowIndices: [],
+      changes,
+      appliedFixes:      ['find-replace'],
+      cleanedHeaders:    undefined,
+    };
+  }
+  showToast(`Applied ${changes.length} replacement${changes.length === 1 ? '' : 's'}.`, 'success');
+  render();
+}
+
 function handleReset() {
-  state.parsed = null;
-  state.issues = [];
-  state.result = null;
-  state.activeColumn = null;
-  state.filterSlots = [{ column: '', value: '', mode: 'include' }];
-  state.sidebarOpen = true;
+  state.parsed           = null;
+  state.issues           = [];
+  state.result           = null;
+  state.prevResult       = null;
+  state.activeColumn     = null;
+  state.filterSlots      = [{ column: '', value: '', mode: 'include' }];
+  state.sidebarOpen      = true;
+  state.findReplaceRules = [];
+  state.findReplaceOpen  = false;
   render();
 }
 
