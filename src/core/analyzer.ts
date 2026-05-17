@@ -11,6 +11,7 @@
  */
 
 import type { ParsedFile, Issue, Row } from '../types';
+import { buildFuzzyReplacements } from '../lib/levenshtein';
 
 /* ───────────────────────────────────────────────────
    Helpers
@@ -421,6 +422,57 @@ function detectContactFormats(file: ParsedFile): Issue | null {
   };
 }
 
+function detectFuzzyValues(file: ParsedFile): Issue | null {
+  const MAX_UNIQUE = 50;
+  const MIN_LEN    = 4;
+  const affected: string[] = [];
+  let totalAffected = 0;
+
+  for (let c = 0; c < file.headers.length; c++) {
+    // Build value → frequency map for this column
+    const counts = new Map<string, number>();
+    for (const row of file.rows) {
+      const v = (row[c] ?? '').trim();
+      if (!v) continue;
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+
+    const unique = Array.from(counts.keys());
+
+    // Skip non-categorical columns (too many distinct values)
+    if (unique.length > MAX_UNIQUE || unique.length < 2) continue;
+
+    // Skip columns that are predominantly numeric — edit distance on numbers
+    // produces too many false positives (e.g. "100" and "200" differ by 1).
+    const numericCount = unique.filter(v => !isNaN(Number(v.replace(/,/g, '')))).length;
+    if (unique.length > 0 && numericCount / unique.length > 0.5) continue;
+
+    const replacements = buildFuzzyReplacements(unique, counts, MIN_LEN);
+    if (replacements.size === 0) continue;
+
+    // Sum the occurrence counts of all misspellings
+    let colAffected = 0;
+    for (const [misspelling] of replacements) {
+      colAffected += counts.get(misspelling) ?? 0;
+    }
+
+    affected.push(file.headers[c] ?? `col_${c}`);
+    totalAffected += colAffected;
+  }
+
+  if (affected.length === 0) return null;
+
+  return {
+    id: 'fuzzy-values',
+    label: 'Near-duplicate values',
+    description: `${totalAffected} cell${totalAffected === 1 ? ' appears' : 's appear'} to be misspellings of more-common values (e.g. "Soth Africa" → "South Africa") across ${affected.length} column${affected.length === 1 ? '' : 's'}. Cleaning will replace each with the most frequent variant.`,
+    severity: 'medium',
+    count: totalAffected,
+    affectedColumns: affected,
+    enabled: true,
+  };
+}
+
 function detectSparseColumns(file: ParsedFile): Issue | null {
   if (file.rows.length === 0) return null;
   const THRESHOLD = 0.8;
@@ -468,7 +520,8 @@ export function analyze(file: ParsedFile): Issue[] {
     detectCurrencyNumbers,
     detectHeaderIssues,
     detectContactFormats,
-    detectSparseColumns,  // NEW
+    detectSparseColumns,
+    detectFuzzyValues,
   ];
 
   const issues: Issue[] = [];

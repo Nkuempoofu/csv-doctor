@@ -156,6 +156,7 @@ function render() {
       filteredRows.length,
       {
         onSlotChange: handleSlotChange,
+        onSlotModeToggle: handleSlotModeToggle,
         onAddSlot: handleAddSlot,
         onRemoveSlot: handleRemoveSlot,
         onClearAll: handleClearAllFilters,
@@ -339,7 +340,7 @@ function handleFile(text: string, name: string, size: number) {
     state.issues = issues;
     state.result = null;
     state.activeColumn = null;
-    state.filterSlots = [{ column: '', value: '' }];
+    state.filterSlots = [{ column: '', value: '', mode: 'include' }];
     state.sidebarOpen = true;
     showToast(
       `Parsed ${parsed.rows.length.toLocaleString()} rows. ${
@@ -387,7 +388,7 @@ function handleClean() {
 function handleRevert() {
   state.result = null;
   state.activeColumn = null;
-  state.filterSlots = [{ column: '', value: '' }];
+  state.filterSlots = [{ column: '', value: '', mode: 'include' }];
   render();
 }
 
@@ -409,7 +410,7 @@ function handleReset() {
   state.issues = [];
   state.result = null;
   state.activeColumn = null;
-  state.filterSlots = [{ column: '', value: '' }];
+  state.filterSlots = [{ column: '', value: '', mode: 'include' }];
   state.sidebarOpen = true;
   render();
 }
@@ -421,14 +422,22 @@ function handleToggleSidebar() {
 
 function handleSlotChange(index: number, column: string, value: string | string[]) {
   state.filterSlots = state.filterSlots.map((s, i) =>
-    i === index ? { column, value } : s
+    i === index ? { ...s, column, value } : s
   );
+  render();
+}
+
+function handleSlotModeToggle(index: number) {
+  state.filterSlots = state.filterSlots.map((s, i) => {
+    if (i !== index) return s;
+    return { ...s, mode: (s.mode ?? 'include') === 'include' ? 'exclude' : 'include' };
+  });
   render();
 }
 
 function handleAddSlot() {
   if (state.filterSlots.length >= 5) return;
-  state.filterSlots = [...state.filterSlots, { column: '', value: '' }];
+  state.filterSlots = [...state.filterSlots, { column: '', value: '', mode: 'include' }];
   render();
 }
 
@@ -439,7 +448,7 @@ function handleRemoveSlot(index: number) {
 }
 
 function handleClearAllFilters() {
-  state.filterSlots = [{ column: '', value: '' }];
+  state.filterSlots = [{ column: '', value: '', mode: 'include' }];
   render();
 }
 

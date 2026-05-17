@@ -33,7 +33,8 @@ export type IssueId =
   | 'currency-numbers'
   | 'header-issues'
   | 'contact-formats'
-  | 'sparse-columns';
+  | 'sparse-columns'
+  | 'fuzzy-values';
 
 export interface Issue {
   id: IssueId;
@@ -71,8 +72,11 @@ export interface AnalyzerState {
  *  value: string     → substring text filter (column has >15 unique values)
  *  value: string[]   → OR multi-select filter (column has ≤15 unique values)
  *  value: '' | []    → slot is inactive (shows all rows)
+ *  mode: 'include'   → keep only matching rows (default)
+ *  mode: 'exclude'   → remove matching rows
  */
 export interface FilterSlot {
   column: string;          // empty string means this slot is unset
   value: string | string[];
+  mode?: 'include' | 'exclude';  // default 'include' when absent
 }

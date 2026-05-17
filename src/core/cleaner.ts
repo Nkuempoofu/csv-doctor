@@ -10,6 +10,7 @@
 
 import type { ParsedFile, CleanResult, Row, IssueId, CellChange } from '../types';
 import { detectDateFormat, isRowEmpty } from './analyzer';
+import { buildFuzzyReplacements } from '../lib/levenshtein';
 
 const PHONE_DETECT_RE = /^[\+\d][\d\s\-\(\)\.]{6,}$/;
 const EMAIL_BASIC_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -155,6 +156,37 @@ function classifyContactColumns(headers: string[], rows: Row[]): ContactColType[
   });
 }
 
+/**
+ * Pre-compute fuzzy replacement maps for all eligible columns.
+ * Returns a Map<colIndex, Map<misspelling, canonical>>.
+ * Only considers categorical columns (≤50 unique values, not mostly numeric).
+ */
+function buildAllFuzzyMaps(headers: string[], rows: Row[]): Map<number, Map<string, string>> {
+  const MAX_UNIQUE = 50;
+  const MIN_LEN    = 4;
+  const result     = new Map<number, Map<string, string>>();
+
+  for (let c = 0; c < headers.length; c++) {
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const v = (row[c] ?? '').trim();
+      if (!v) continue;
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+
+    const unique = Array.from(counts.keys());
+    if (unique.length > MAX_UNIQUE || unique.length < 2) continue;
+
+    const numericCount = unique.filter(v => !isNaN(Number(v.replace(/,/g, '')))).length;
+    if (unique.length > 0 && numericCount / unique.length > 0.5) continue;
+
+    const replacements = buildFuzzyReplacements(unique, counts, MIN_LEN);
+    if (replacements.size > 0) result.set(c, replacements);
+  }
+
+  return result;
+}
+
 function removeSparseColumns(
   headers: string[],
   rows: Row[],
@@ -223,6 +255,11 @@ export function clean(file: ParsedFile, opts: CleanOptions): CleanResult {
   // Pre-compute contact column types (O(n·m) once, avoids per-cell recomputation)
   const contactColTypes: ContactColType[] | null = enabled.has('contact-formats')
     ? classifyContactColumns(workingFile.headers, workingFile.rows)
+    : null;
+
+  // Pre-compute fuzzy replacement maps per column
+  const fuzzyMaps: Map<number, Map<string, string>> | null = enabled.has('fuzzy-values')
+    ? buildAllFuzzyMaps(workingFile.headers, workingFile.rows)
     : null;
 
   const removedRowIndices: number[] = [];
@@ -300,6 +337,14 @@ export function clean(file: ParsedFile, opts: CleanOptions): CleanResult {
         }
       }
 
+      if (enabled.has('fuzzy-values') && fuzzyMaps) {
+        const colMap = fuzzyMaps.get(c);
+        if (colMap) {
+          const canonical = colMap.get(next.trim());
+          if (canonical !== undefined) next = canonical;
+        }
+      }
+
       if (next !== before) {
         changes.push({
           rowIndex: originalIdx,
@@ -332,5 +377,7 @@ function pickReason(before: string, after: string): IssueId {
   if (after.toLowerCase() === before.toLowerCase() && after !== before) return 'mixed-case';
   if (/^-?\d+(\.\d+)?$/.test(after) && /[£$€¥R,]/.test(before)) return 'currency-numbers';
   if (PHONE_DETECT_RE.test(before) && /^\d[\d\s+]*$/.test(after)) return 'contact-formats';
+  // Fuzzy replacement: different strings, not covered by the cases above
+  if (before !== after && before.trim() !== '' && after.trim() !== '') return 'fuzzy-values';
   return 'special-chars';
 }

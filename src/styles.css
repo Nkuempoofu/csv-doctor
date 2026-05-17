@@ -1075,6 +1075,38 @@ button { font: inherit; cursor: pointer; }
   pointer-events: none;
 }
 
+/* Include / Exclude mode toggle */
+.filter-mode-toggle {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 0.7rem;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--sans);
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.filter-mode-toggle--include {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: var(--accent);
+  color: var(--accent-l);
+}
+.filter-mode-toggle--include:hover {
+  background: rgba(6, 182, 212, 0.18);
+}
+.filter-mode-toggle--exclude {
+  background: rgba(244, 63, 94, 0.08);
+  border-color: var(--rose);
+  color: var(--rose);
+}
+.filter-mode-toggle--exclude:hover {
+  background: rgba(244, 63, 94, 0.18);
+}
+
 .filters-add {
   margin-top: 0.4rem;
   background: none;

@@ -9,6 +9,7 @@ import { escapeHtml } from '../lib/format';
 
 export interface FilterSlotsCallbacks {
   onSlotChange: (index: number, column: string, value: string | string[]) => void;
+  onSlotModeToggle: (index: number) => void;
   onAddSlot: () => void;
   onRemoveSlot: (index: number) => void;
   onClearAll: () => void;
@@ -83,10 +84,23 @@ export function renderFilterSlots(
     }
 
     const canRemove = slots.length > 1;
+    const mode = slot.mode ?? 'include';
+    const modeLabel = mode === 'include' ? 'Include' : 'Exclude';
+    const modeTitle = mode === 'include'
+      ? 'Showing rows that match — click to exclude instead'
+      : 'Hiding rows that match — click to include instead';
+
     return `
       <div class="filter-slot" data-slot="${idx}">
         <select class="filter-slot-col" data-idx="${idx}">${colOpts}</select>
         ${valueHtml}
+        <button
+          class="filter-mode-toggle filter-mode-toggle--${mode}"
+          type="button"
+          data-idx="${idx}"
+          title="${modeTitle}"
+          aria-label="${modeLabel} filter"
+        >${modeLabel}</button>
         ${canRemove
           ? `<button class="filter-slot-remove" data-idx="${idx}" type="button" title="Remove filter" aria-label="Remove filter">✕</button>`
           : `<span class="filter-slot-remove filter-slot-remove--placeholder"></span>`}
@@ -134,6 +148,14 @@ export function renderFilterSlots(
         const col = slots[idx]?.column ?? '';
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => cb.onSlotChange(idx, col, input.value), DEBOUNCE_MS);
+      });
+    });
+
+    // Mode toggle buttons (include ↔ exclude)
+    section.querySelectorAll<HTMLButtonElement>('.filter-mode-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.idx);
+        cb.onSlotModeToggle(idx);
       });
     });
 
