@@ -540,6 +540,41 @@ function detectNumberFormat(file: ParsedFile): Issue | null {
   };
 }
 
+function detectDuplicateColumns(file: ParsedFile): Issue | null {
+  if (file.rows.length < 5) return null;
+  const SIMILARITY = 0.9;
+  const pairs: string[] = [];
+
+  for (let i = 0; i < file.headers.length; i++) {
+    for (let j = i + 1; j < file.headers.length; j++) {
+      let matches = 0;
+      let total   = 0;
+      for (const row of file.rows) {
+        const vi = (row[i] ?? '').trim().toLowerCase();
+        const vj = (row[j] ?? '').trim().toLowerCase();
+        if (vi === '' && vj === '') continue; // skip both-empty rows
+        total++;
+        if (vi === vj) matches++;
+      }
+      if (total >= 5 && matches / total >= SIMILARITY) {
+        pairs.push(`"${file.headers[i]}" ≈ "${file.headers[j]}"`);
+      }
+    }
+  }
+
+  if (pairs.length === 0) return null;
+
+  return {
+    id: 'duplicate-columns',
+    label: 'Duplicate columns',
+    description: `${pairs.length} pair${pairs.length === 1 ? '' : 's'} of columns appear to contain identical data: ${pairs.slice(0, 3).join('; ')}. Review and remove one manually.`,
+    severity: 'medium',
+    count: pairs.length,
+    affectedColumns: [],
+    enabled: false, // detection-only — no auto-clean
+  };
+}
+
 /* ───────────────────────────────────────────────────
    Public — run all detectors
 ─────────────────────────────────────────────────── */
@@ -559,6 +594,7 @@ export function analyze(file: ParsedFile): Issue[] {
     detectHeaderIssues,
     detectContactFormats,
     detectSparseColumns,
+    detectDuplicateColumns,  // ← add here
     detectFuzzyValues,
   ];
 

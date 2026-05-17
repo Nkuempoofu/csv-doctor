@@ -165,3 +165,50 @@ describe('detectNumberFormat', () => {
     expect(issues.find(i => i.id === 'number-format')).toBeUndefined();
   });
 });
+
+describe('detectDuplicateColumns', () => {
+  it('flags two columns with ≥90% identical non-empty values', () => {
+    const file = makeFile(
+      ['Region', 'Territory'],
+      [
+        ['North', 'North'],
+        ['South', 'South'],
+        ['East',  'East'],
+        ['West',  'West'],
+        ['North', 'North'],
+      ]
+    );
+    const issues = analyze(file);
+    const issue = issues.find(i => i.id === 'duplicate-columns');
+    expect(issue).toBeDefined();
+    expect(issue!.count).toBe(1); // 1 duplicate pair
+  });
+
+  it('does not flag columns with different content', () => {
+    const file = makeFile(
+      ['Region', 'Country'],
+      [['North', 'South Africa'], ['South', 'Nigeria'], ['East', 'Kenya']]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'duplicate-columns')).toBeUndefined();
+  });
+
+  it('does not flag when fewer than 5 non-empty rows exist', () => {
+    const file = makeFile(
+      ['A', 'B'],
+      [['x', 'x'], ['y', 'y'], ['z', 'z']]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'duplicate-columns')).toBeUndefined();
+  });
+
+  it('is case-insensitive when comparing', () => {
+    const file = makeFile(
+      ['Col1', 'Col2'],
+      [['North', 'north'], ['South', 'SOUTH'], ['East', 'east'],
+       ['West', 'WEST'], ['Central', 'central']]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'duplicate-columns')).toBeDefined();
+  });
+});
