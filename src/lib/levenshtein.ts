@@ -5,13 +5,20 @@
  * (e.g. "Soth Africa" vs "South Africa", "Finanace" vs "Finance") and maps
  * each misspelling to its canonical (correct) form.
  *
+ * Two complementary passes:
+ *   A. Abbreviation normalisation — strips dots so "U.K." and "Uk" both become
+ *      "uk" and are merged as an exact match (no edit distance needed).
+ *      This also handles "U.S.A." / "USA", "H.R." / "HR", etc.
+ *
+ *   B. Levenshtein spelling correction — edit distance = 1 only, catches
+ *      "Soth Africa" / "South Africa", "Finanace" / "Finance", etc.
+ *
  * Canonical selection — in priority order:
- *   1. Dictionary score  — fraction of words in the value that are real English words.
+ *   1. Dictionary score  — fraction of words in the value that are real words.
  *      "Finance" (1.0) beats "Finanace" (0.0) and "Finace" (0.0).
  *      "South Africa" (1.0) beats "Soth Africa" (0.5, "Soth" is unknown).
  *      This works regardless of which string is longer or more frequent.
- *   2. Case-folded frequency — when scores are equal (both real words, or both unknown),
- *      the variant that appears most often in the data wins.
+ *   2. Case-folded frequency — when scores are equal, the most common variant wins.
  *   3. Longer string — final length tie-break (deletion typos are common).
  *   4. Alphabetically first — deterministic last resort.
  *
@@ -69,26 +76,75 @@ class UnionFind {
 }
 
 /**
+ * Normalise an abbreviation for dot-stripping comparison.
+ * "U.K." → "uk",  "U.S.A." → "usa",  "Uk" → "uk",  "HR" → "hr"
+ */
+function abbrevKey(v: string): string {
+  return v.toLowerCase().replace(/\./g, '').trim();
+}
+
+/**
  * Given a list of unique string values and their occurrence counts, return a
  * Map<misspelling → canonical> for every near-duplicate cluster found within
- * a strict edit distance of 1.
+ * a strict edit distance of 1, PLUS abbreviation format variants (U.K. / Uk).
  *
  * See module doc-comment for the full canonical-selection strategy.
  *
- * Values shorter than `minLen` are skipped to avoid false positives on
- * very short tokens. Complexity: O(n²) — acceptable because callers cap at
- * 50 unique values per column.
+ * Values shorter than `minLen` are skipped for Levenshtein matching to avoid
+ * false positives on very short tokens, but ALL values (including short ones)
+ * are checked for abbreviation normalisation.
+ * Complexity: O(n²) — acceptable because callers cap at 50 unique values per column.
  */
 export function buildFuzzyReplacements(
   unique: string[],
   counts: Map<string, number>,
   minLen = 4
 ): Map<string, string> {
+  const result = new Map<string, string>();
+
+  // ── Pass A: Abbreviation normalisation ──────────────────────────────────────
+  // Group ALL unique values (no minLen filter) by their dot-stripped lowercase key.
+  // "U.K." and "Uk" both normalise to "uk" → merge them.
+  // Only fires when dot-stripped form differs from plain lowercase
+  // (i.e. the value actually contains dots that change how it reads).
+  const abbrevGroups = new Map<string, string[]>();
+  for (const v of unique) {
+    const ak = abbrevKey(v);
+    if (!abbrevGroups.has(ak)) abbrevGroups.set(ak, []);
+    abbrevGroups.get(ak)!.push(v);
+  }
+
+  for (const [ak, members] of abbrevGroups) {
+    // Only merge when there is genuine dot-variation (at least one member has a dot
+    // and the group has more than one distinct member after normalisation).
+    const hasDot = members.some(m => m.includes('.'));
+    if (members.length < 2 || !hasDot) continue;
+
+    // Canonical = most frequent; ties broken by longer original string, then alpha.
+    const canonical = members.reduce((best, v) => {
+      const cntV    = counts.get(v) ?? 0;
+      const cntBest = counts.get(best) ?? 0;
+      if (cntV    > cntBest) return v;
+      if (cntBest > cntV)    return best;
+      if (v.length    > best.length) return v;
+      if (best.length > v.length)    return best;
+      return v < best ? v : best;
+    });
+
+    for (const m of members) {
+      if (m === canonical) continue;
+      result.set(m,              canonical);
+      result.set(m.toLowerCase(), canonical);
+      result.set(ak,             canonical); // dot-stripped fallback key
+    }
+  }
+
+  // ── Pass B: Levenshtein spelling correction ──────────────────────────────────
   const candidates = unique.filter(v => v.length >= minLen);
-  if (candidates.length < 2) return new Map();
+  if (candidates.length < 2) return result;
 
   // Step 1: Aggregate frequency across capitalisation variants.
-  // "South Africa" (3) + "south africa" (5) → "south africa" folded total = 8.
+  // "South Africa" (3) + "south africa" (5) → folded total = 8.
   const foldedTotal = new Map<string, number>();  // lowercase → combined count
   const foldedBest  = new Map<string, string>();  // lowercase → most-freq original casing
 
@@ -101,7 +157,7 @@ export function buildFuzzyReplacements(
   }
 
   const foldedKeys = Array.from(foldedTotal.keys());
-  if (foldedKeys.length < 2) return new Map();
+  if (foldedKeys.length < 2) return result;
 
   // Step 2: Union-Find — strict edit distance of 1 only.
   const uf = new UnionFind();
@@ -123,8 +179,6 @@ export function buildFuzzyReplacements(
   }
 
   // Step 4: Build replacement map.
-  const result = new Map<string, string>();
-
   for (const members of groups.values()) {
     if (members.length < 2) continue;
 

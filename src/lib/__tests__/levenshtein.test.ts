@@ -199,6 +199,99 @@ describe('buildFuzzyReplacements — case-folded aggregation', () => {
   });
 });
 
+describe('isKnownWord — multilingual coverage', () => {
+  it('recognises Spanish business words', () => {
+    expect(isKnownWord('finanzas')).toBe(true);
+    expect(isKnownWord('ventas')).toBe(true);
+    expect(isKnownWord('recursos')).toBe(true);
+    expect(isKnownWord('gerente')).toBe(true);
+  });
+
+  it('recognises French business words', () => {
+    expect(isKnownWord('finances')).toBe(true);
+    expect(isKnownWord('ventes')).toBe(true);
+    expect(isKnownWord('ressources')).toBe(true);
+    expect(isKnownWord('directeur')).toBe(true);
+  });
+
+  it('recognises Portuguese business words', () => {
+    expect(isKnownWord('financas')).toBe(true);
+    expect(isKnownWord('vendas')).toBe(true);
+    expect(isKnownWord('funcionario')).toBe(true);
+  });
+
+  it('recognises German business words', () => {
+    expect(isKnownWord('finanzen')).toBe(true);
+    expect(isKnownWord('vertrieb')).toBe(true);
+    expect(isKnownWord('mitarbeiter')).toBe(true);
+  });
+
+  it('recognises Swahili business words', () => {
+    expect(isKnownWord('fedha')).toBe(true);
+    expect(isKnownWord('mauzo')).toBe(true);
+    expect(isKnownWord('wafanyakazi')).toBe(true);
+  });
+});
+
+describe('buildFuzzyReplacements — multilingual spelling correction', () => {
+  it('Finanzas wins over Finanzaz (Spanish finance word)', () => {
+    const counts = new Map([['Finanzas', 5], ['Finanzaz', 10]]);
+    const result = buildFuzzyReplacements(['Finanzas', 'Finanzaz'], counts);
+    expect(result.get('Finanzaz')).toBe('Finanzas');
+  });
+
+  it('Finanzen wins over Finanzen typo (German finance word)', () => {
+    const counts = new Map([['Finanzen', 4], ['Finansen', 8]]);
+    const result = buildFuzzyReplacements(['Finanzen', 'Finansen'], counts);
+    expect(result.get('Finansen')).toBe('Finanzen');
+  });
+
+  it('Directeur wins over Dircteur (French director, missing e)', () => {
+    // "Dircteur" is "Directeur" with one 'e' deleted → distance 1
+    const counts = new Map([['Directeur', 3], ['Dircteur', 9]]);
+    const result = buildFuzzyReplacements(['Directeur', 'Dircteur'], counts);
+    expect(result.get('Dircteur')).toBe('Directeur');
+  });
+});
+
+describe('buildFuzzyReplacements — abbreviation normalisation', () => {
+  it('merges U.K. and Uk (dot-stripped both become "uk")', () => {
+    const counts = new Map([['U.K.', 10], ['Uk', 3]]);
+    const result = buildFuzzyReplacements(['U.K.', 'Uk'], counts);
+    // U.K. is more frequent → canonical
+    expect(result.get('Uk')).toBe('U.K.');
+    expect(result.has('U.K.')).toBe(false);
+  });
+
+  it('merges U.S.A. and USA', () => {
+    const counts = new Map([['U.S.A.', 5], ['USA', 8]]);
+    const result = buildFuzzyReplacements(['U.S.A.', 'USA'], counts);
+    // USA is more frequent → canonical
+    expect(result.get('U.S.A.')).toBe('USA');
+    expect(result.has('USA')).toBe(false);
+  });
+
+  it('merges H.R. and HR', () => {
+    const counts = new Map([['H.R.', 2], ['HR', 15]]);
+    const result = buildFuzzyReplacements(['H.R.', 'HR'], counts);
+    expect(result.get('H.R.')).toBe('HR');
+  });
+
+  it('does NOT merge values that differ beyond dots (U.K. vs UN)', () => {
+    const counts = new Map([['U.K.', 5], ['UN', 5]]);
+    const result = buildFuzzyReplacements(['U.K.', 'UN'], counts);
+    // "uk" ≠ "un" — different after dot-stripping
+    expect(result.size).toBe(0);
+  });
+
+  it('stores dot-stripped key for cleaner fallback lookup', () => {
+    const counts = new Map([['U.K.', 10], ['Uk', 3]]);
+    const result = buildFuzzyReplacements(['U.K.', 'Uk'], counts);
+    // cleaner does colMap.get(lower.replace(/\./g,'')) = colMap.get('uk')
+    expect(result.get('uk')).toBe('U.K.');
+  });
+});
+
 describe('buildFuzzyReplacements — transitive grouping', () => {
   it('chains near-duplicates transitively', () => {
     const counts = new Map([

@@ -341,9 +341,11 @@ export function clean(file: ParsedFile, opts: CleanOptions): CleanResult {
         const colMap = fuzzyMaps.get(c);
         if (colMap) {
           const trimmed = next.trim();
-          // Try exact match first; fall back to lowercase so values already
-          // transformed by earlier passes (e.g. mixed-case) still get matched.
-          const canonical = colMap.get(trimmed) ?? colMap.get(trimmed.toLowerCase());
+          const lower   = trimmed.toLowerCase();
+          // Try exact match → lowercase → dot-stripped (handles "U.K." / "Uk").
+          const canonical = colMap.get(trimmed)
+                         ?? colMap.get(lower)
+                         ?? colMap.get(lower.replace(/\./g, ''));
           if (canonical !== undefined) next = canonical;
         }
       }
