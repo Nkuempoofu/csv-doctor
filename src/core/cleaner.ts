@@ -340,7 +340,10 @@ export function clean(file: ParsedFile, opts: CleanOptions): CleanResult {
       if (enabled.has('fuzzy-values') && fuzzyMaps) {
         const colMap = fuzzyMaps.get(c);
         if (colMap) {
-          const canonical = colMap.get(next.trim());
+          const trimmed = next.trim();
+          // Try exact match first; fall back to lowercase so values already
+          // transformed by earlier passes (e.g. mixed-case) still get matched.
+          const canonical = colMap.get(trimmed) ?? colMap.get(trimmed.toLowerCase());
           if (canonical !== undefined) next = canonical;
         }
       }

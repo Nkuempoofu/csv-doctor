@@ -48,6 +48,16 @@ function editThreshold(a: string, b: string): number {
   return Math.max(a.length, b.length) >= 8 ? 2 : 1;
 }
 
+/**
+ * Minimum ratio of canonical frequency to misspelling frequency required
+ * before we replace the misspelling with the canonical.
+ *
+ * A ratio of 3 means the dominant spelling must appear at least 3× as often
+ * as the variant being replaced. This prevents two similarly-frequent values
+ * (which might both be legitimate) from being merged based on a narrow lead.
+ */
+const MIN_FREQUENCY_RATIO = 3;
+
 /* ── Union-Find (path-compressed) ────────────────────── */
 
 class UnionFind {
@@ -72,12 +82,24 @@ class UnionFind {
  * Map<misspelling → canonical> where canonical is the most-frequent member of
  * each near-duplicate group.
  *
- * Values shorter than `minLen` characters are skipped to avoid false positives
- * on short tokens. The comparison is case-insensitive, but the original casing
- * is preserved in the output map.
+ * Key design decisions:
  *
- * Complexity: O(n²) comparisons — acceptable because callers cap unique values
- * at 50 per column.
+ * 1. **Case-folded frequency totals** — "South Africa" (3) + "south africa" (5) are
+ *    the same word; their combined count (8) is used when deciding which spelling wins
+ *    over "Soth Africa" (2). Without this, a misspelling could appear to "win" simply
+ *    because the correct spelling's count is split across case variants.
+ *
+ * 2. **Minimum frequency ratio** — the canonical must appear at least
+ *    MIN_FREQUENCY_RATIO × more often than the variant being replaced. Values with
+ *    similar frequencies are left untouched (they may be two legitimately distinct
+ *    entries, not a typo at all).
+ *
+ * 3. **Lookup keys** — the returned map stores both the exact original casing and
+ *    the lowercase form as keys, so callers can do a case-insensitive fallback
+ *    without scanning the whole map.
+ *
+ * Values shorter than `minLen` characters are skipped to reduce false positives.
+ * Complexity: O(n²) — acceptable because callers cap unique values at 50 per column.
  */
 export function buildFuzzyReplacements(
   unique: string[],
@@ -87,44 +109,85 @@ export function buildFuzzyReplacements(
   const candidates = unique.filter(v => v.length >= minLen);
   if (candidates.length < 2) return new Map();
 
+  // Step 1: Aggregate frequency across capitalisation variants.
+  // All casing forms of the same word share a single combined count so that the
+  // canonical-selection step sees the true popularity of each spelling.
+  const foldedTotal = new Map<string, number>();  // lowercase → combined count
+  const foldedBest  = new Map<string, string>();  // lowercase → most-frequent original casing
+
+  for (const v of candidates) {
+    const key = v.toLowerCase();
+    const cnt = counts.get(v) ?? 0;
+    foldedTotal.set(key, (foldedTotal.get(key) ?? 0) + cnt);
+    const prev = foldedBest.get(key);
+    if (!prev || cnt > (counts.get(prev) ?? 0)) foldedBest.set(key, v);
+  }
+
+  const foldedKeys = Array.from(foldedTotal.keys());
+  if (foldedKeys.length < 2) return new Map();
+
+  // Step 2: Union-Find over deduplicated lowercase forms.
   const uf = new UnionFind();
 
-  for (let i = 0; i < candidates.length; i++) {
-    for (let j = i + 1; j < candidates.length; j++) {
-      const a = candidates[i];
-      const b = candidates[j];
-      const dist = levenshtein(a.toLowerCase(), b.toLowerCase());
+  for (let i = 0; i < foldedKeys.length; i++) {
+    for (let j = i + 1; j < foldedKeys.length; j++) {
+      const a = foldedKeys[i];
+      const b = foldedKeys[j];
+      const dist = levenshtein(a, b); // both already lowercase
       if (dist > 0 && dist <= editThreshold(a, b)) {
         uf.union(a, b);
       }
     }
   }
 
-  // Group all candidates by their root
+  // Step 3: Group by root.
   const groups = new Map<string, string[]>();
-  for (const v of candidates) {
+  for (const v of foldedKeys) {
     const root = uf.find(v);
-    const existing = groups.get(root);
-    if (existing) existing.push(v);
-    else groups.set(root, [v]);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root)!.push(v);
   }
 
+  // Step 4: For each near-duplicate cluster, pick canonical and build the map.
   const result = new Map<string, string>();
 
   for (const members of groups.values()) {
-    if (members.length < 2) continue; // singleton — no near-duplicate pairing
+    if (members.length < 2) continue;
 
-    // Canonical = most frequent (tie-break: alphabetically earlier)
-    const canonical = members.reduce((best, v) => {
-      const cntV    = counts.get(v)    ?? 0;
-      const cntBest = counts.get(best) ?? 0;
+    // Canonical = highest combined frequency.
+    // Tie-break: longer string (more complete, more likely the full/correct word),
+    // then alphabetically earliest.
+    const canonicalKey = members.reduce((best, v) => {
+      const cntV    = foldedTotal.get(v)    ?? 0;
+      const cntBest = foldedTotal.get(best) ?? 0;
       if (cntV > cntBest) return v;
-      if (cntV === cntBest && v < best) return v;
+      if (cntV === cntBest && v.length > best.length) return v;
+      if (cntV === cntBest && v.length === best.length && v < best) return v;
       return best;
     });
 
-    for (const m of members) {
-      if (m !== canonical) result.set(m, canonical);
+    const canonicalCount = foldedTotal.get(canonicalKey)  ?? 0;
+    const canonicalOrig  = foldedBest.get(canonicalKey)!; // best original casing
+
+    for (const memberKey of members) {
+      if (memberKey === canonicalKey) continue;
+
+      const memberCount = foldedTotal.get(memberKey) ?? 0;
+
+      // Guard: only replace when the canonical is clearly dominant.
+      // If the counts are close, the "misspelling" may be a legitimate distinct value.
+      if (memberCount > 0 && canonicalCount / memberCount < MIN_FREQUENCY_RATIO) continue;
+
+      // Store the lowercase key so callers can do a case-insensitive lookup.
+      result.set(memberKey, canonicalOrig);
+
+      // Also store every exact-casing variant present in the source data so
+      // the lookup succeeds even without lowercasing the cell value.
+      for (const orig of candidates) {
+        if (orig !== memberKey && orig.toLowerCase() === memberKey) {
+          result.set(orig, canonicalOrig);
+        }
+      }
     }
   }
 
