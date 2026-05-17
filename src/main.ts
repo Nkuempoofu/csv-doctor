@@ -226,7 +226,7 @@ function renderHero(): HTMLElement {
 
     <p class="hero-sub">
       Drop in any CSV file and CSV Doctor instantly diagnoses data quality problems,
-      lets you pick the fixes you want, then exports a clean version —
+      lets you pick the fixes you want, then exports a clean version,
       entirely in your browser. Nothing ever leaves your machine.
     </p>
 
@@ -249,35 +249,35 @@ function renderHero(): HTMLElement {
         </div>
         <span class="hero-step-label">Upload</span>
       </div>
-      <span class="hero-step-sep">→</span>
+      <span class="hero-step-sep">,</span>
       <div class="hero-step">
         <div class="hero-step-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </div>
         <span class="hero-step-label">Diagnose</span>
       </div>
-      <span class="hero-step-sep">→</span>
+      <span class="hero-step-sep">,</span>
       <div class="hero-step">
         <div class="hero-step-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <span class="hero-step-label">Clean</span>
       </div>
-      <span class="hero-step-sep">→</span>
+      <span class="hero-step-sep">,</span>
       <div class="hero-step">
         <div class="hero-step-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/></svg>
         </div>
         <span class="hero-step-label">Filter</span>
       </div>
-      <span class="hero-step-sep">→</span>
+      <span class="hero-step-sep">,</span>
       <div class="hero-step">
         <div class="hero-step-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         </div>
         <span class="hero-step-label">Analyse</span>
       </div>
-      <span class="hero-step-sep">→</span>
+      <span class="hero-step-sep">,</span>
       <div class="hero-step">
         <div class="hero-step-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>

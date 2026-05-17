@@ -152,29 +152,29 @@ button { font: inherit; cursor: pointer; }
 .hero {
   text-align: center;
   max-width: 860px;
-  margin: 0 auto 3rem;
-  padding: 3.5rem 0 0;
+  margin: 0 auto 1.5rem;
+  padding: 1.75rem 0 0;
 }
 
 /* Badge row */
 .hero-eyebrow-row {
   display: flex;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   flex-wrap: wrap;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
 }
 .hero-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   border-radius: 100px;
-  padding: 0.3rem 0.9rem;
+  padding: 0.22rem 0.75rem;
 }
 .hero-badge::before { content: '✓'; font-size: 0.8em; }
 .hero-badge--green {
@@ -195,11 +195,11 @@ button { font: inherit; cursor: pointer; }
 
 /* Title */
 .hero-title {
-  font-size: clamp(3rem, 7.5vw, 6rem);
+  font-size: clamp(1.9rem, 4vw, 3rem);
   font-weight: 800;
-  letter-spacing: -0.04em;
-  line-height: 1.0;
-  margin-bottom: 1.25rem;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  margin-bottom: 0.75rem;
 }
 .hero-title-accent {
   background: linear-gradient(135deg, var(--accent) 0%, var(--emerald) 100%);
@@ -211,11 +211,11 @@ button { font: inherit; cursor: pointer; }
 
 /* Subtitle */
 .hero-sub {
-  font-size: 1.05rem;
+  font-size: 0.88rem;
   color: var(--muted);
-  line-height: 1.7;
-  max-width: 580px;
-  margin: 0 auto 2.5rem;
+  line-height: 1.65;
+  max-width: 560px;
+  margin: 0 auto 1.25rem;
 }
 
 /* Feature chips */
@@ -223,20 +223,20 @@ button { font: inherit; cursor: pointer; }
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.45rem;
-  margin-bottom: 3rem;
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
 }
 .hero-feat {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
   background: rgba(6,182,212,0.06);
   border: 1px solid rgba(6,182,212,0.18);
   border-radius: 100px;
   color: var(--text);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 500;
-  padding: 0.3rem 0.9rem;
+  padding: 0.2rem 0.7rem;
 }
 .hero-feat::before {
   content: '✓';
@@ -248,11 +248,11 @@ button { font: inherit; cursor: pointer; }
 /* Workflow steps */
 .hero-workflow {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  gap: 0.15rem;
+  gap: 0;
   flex-wrap: wrap;
-  padding: 1.75rem 2rem;
+  padding: 1rem 1.5rem;
   background: rgba(8, 12, 28, 0.5);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -261,13 +261,13 @@ button { font: inherit; cursor: pointer; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0 0.6rem;
+  gap: 0.4rem;
+  padding: 0 0.5rem;
 }
 .hero-step-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   background: linear-gradient(135deg, rgba(6,182,212,0.15), rgba(16,185,129,0.1));
   border: 1px solid rgba(6,182,212,0.25);
   display: flex;
@@ -275,23 +275,23 @@ button { font: inherit; cursor: pointer; }
   justify-content: center;
   color: var(--accent-l);
 }
+.hero-step-icon svg { width: 16px; height: 16px; }
 .hero-step-label {
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.09em;
 }
 .hero-step-sep {
   color: var(--faint);
-  font-size: 1.1rem;
-  margin-top: 0.6rem;
+  font-size: 1rem;
   padding: 0 0.1rem;
-  align-self: flex-start;
+  margin-bottom: 1.1rem;
 }
 @media (max-width: 640px) {
-  .hero-title { font-size: clamp(2.4rem, 10vw, 3.5rem); }
-  .hero-workflow { gap: 0.25rem; padding: 1.25rem; }
+  .hero-title { font-size: clamp(1.6rem, 8vw, 2.2rem); }
+  .hero-workflow { padding: 0.85rem 1rem; }
   .hero-step-sep { display: none; }
 }
 
