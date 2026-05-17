@@ -6,6 +6,7 @@
  */
 
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import type { ParsedFile, Row } from '../types';
 
 export function exportCsv(
@@ -78,6 +79,31 @@ export function exportJson(
 ): void {
   const json = JSON.stringify(buildJsonObjects(rows, headers), null, 2);
   const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 250);
+}
+
+export function exportXlsx(
+  file: ParsedFile,
+  rows: Row[],
+  filename: string,
+  headers: string[] = file.headers
+): void {
+  const data = [headers, ...rows];
+  const ws   = XLSX.utils.aoa_to_sheet(data);
+  const wb   = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cleaned');
+
+  const buf  = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
