@@ -462,8 +462,13 @@ function handleExportXlsx() {
 }
 
 function handleUndo() {
-  state.result     = state.prevResult;
+  state.result = state.prevResult;
   state.prevResult = null;
+  // If the undone result has different headers, reset active column
+  const undoneHeaders = state.result?.cleanedHeaders ?? state.parsed?.headers ?? [];
+  if (state.activeColumn && !undoneHeaders.includes(state.activeColumn)) {
+    state.activeColumn = null;
+  }
   showToast('Last fix reverted.', 'info');
   render();
 }
