@@ -423,17 +423,12 @@ function renderFileBar(): HTMLElement {
 
   // Hidden input for "Add another file"
   const input = document.createElement('input');
-  input.type   = 'file';
-  input.accept = '.csv,.tsv,.txt,text/csv';
-  input.hidden = true;
+  input.type     = 'file';
+  input.accept   = '.csv,.tsv,.txt,text/csv';
+  input.multiple = true;
+  input.hidden   = true;
   input.addEventListener('change', () => {
-    const picked = input.files?.[0];
-    if (picked) {
-      const reader   = new FileReader();
-      reader.onload  = () => handleFile(reader.result as string, picked.name, picked.size);
-      reader.onerror = () => showToast('Could not read the file.', 'error');
-      reader.readAsText(picked, 'utf-8');
-    }
+    if (input.files && input.files.length > 0) handleAddFiles(input.files);
     input.value = '';
   });
   f.appendChild(input);
