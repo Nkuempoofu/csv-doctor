@@ -4,7 +4,7 @@
  */
 
 import type { FileEntry } from '../types';
-import { escapeHtml } from '../lib/format';
+import { escapeHtml, truncate } from '../lib/format';
 
 const STATUS_LABELS: Record<FileEntry['status'], string> = {
   pending:    'Pending',
@@ -26,18 +26,28 @@ export function renderFileQueue(props: FileQueueProps): HTMLElement {
 
   const aside = document.createElement('aside');
   aside.className = 'file-queue';
+  aside.setAttribute('aria-label', 'File queue');
 
   // ── File list ──
   const list = document.createElement('ul');
   list.className = 'fq-list';
+  list.setAttribute('aria-label', 'Loaded files');
 
   for (const file of files) {
     const li = document.createElement('li');
     li.className = `fq-item${file.id === activeFileId ? ' fq-item--active' : ''}`;
     li.dataset.id = file.id;
+    li.setAttribute('role', 'button');
+    li.setAttribute('tabindex', '0');
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onSelect(file.id);
+      }
+    });
 
     const name      = file.parsed.filename;
-    const truncated = name.length > 22 ? name.slice(0, 19) + '…' : name;
+    const truncated = truncate(name, 22);
 
     li.innerHTML = `
       <svg class="fq-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
