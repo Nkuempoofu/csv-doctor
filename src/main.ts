@@ -80,6 +80,23 @@ function makeFileEntry(parsed: ParsedFile, issues: Issue[]): FileEntry {
   };
 }
 
+/** Builds a stub FileEntry for a file that failed to parse. */
+function makeErrorEntry(name: string, size: number, errMsg: string): FileEntry {
+  return {
+    id:               `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    parsed:           { filename: name, size, delimiter: ',', encoding: 'utf-8', headers: [], rows: [], rawText: '' },
+    issues:           [],
+    result:           null,
+    prevResult:       null,
+    activeColumn:     null,
+    filterSlots:      [{ column: '', value: '', mode: 'include' }],
+    findReplaceRules: [],
+    findReplaceOpen:  false,
+    status:           'error',
+    errorMessage:     errMsg,
+  };
+}
+
 /** Returns true if the active file has any non-empty filter slots. */
 function hasActiveFilters(): boolean {
   const file = activeFile();
@@ -457,8 +474,8 @@ function handleFile(text: string, name: string, size: number) {
     const parsed = parseCsv(text, { filename: name, size });
     const issues = analyze(parsed);
     const entry  = makeFileEntry(parsed, issues);
-    state.files        = [...state.files, entry];
-    state.activeFileId = entry.id;
+    state.files = [...state.files, entry];
+    if (state.activeFileId === null) state.activeFileId = entry.id;
     state.sidebarOpen  = true;
     showToast(
       `Parsed ${parsed.rows.length.toLocaleString()} rows. ${
@@ -470,27 +487,12 @@ function handleFile(text: string, name: string, size: number) {
     );
     render();
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : 'Could not parse the file.';
-    if (state.files.length > 0) {
-      // Add an error entry to the queue so the user can see which file failed
-      const errEntry: FileEntry = {
-        id:               `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        parsed:           { filename: name, size, delimiter: ',', encoding: 'utf-8', headers: [], rows: [], rawText: '' },
-        issues:           [],
-        result:           null,
-        prevResult:       null,
-        activeColumn:     null,
-        filterSlots:      [{ column: '', value: '', mode: 'include' }],
-        findReplaceRules: [],
-        findReplaceOpen:  false,
-        status:           'error',
-        errorMessage:     errMsg,
-      };
-      state.files        = [...state.files, errEntry];
-      state.activeFileId = errEntry.id;
-      render();
-    }
+    const errMsg  = err instanceof Error ? err.message : 'Could not parse the file.';
+    const errEntry = makeErrorEntry(name, size, errMsg);
+    state.files        = [...state.files, errEntry];
+    if (state.activeFileId === null) state.activeFileId = errEntry.id;
     showToast(errMsg, 'error');
+    render();
   }
 }
 
