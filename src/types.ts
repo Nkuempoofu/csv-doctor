@@ -93,3 +93,24 @@ export interface FindReplaceRule {
   caseSensitive: boolean;
   wholeCell:     boolean;  // true = whole cell must equal `find`; false = substring
 }
+
+/** Status of a file in the batch queue. */
+export type FileStatus = 'pending' | 'cleaned' | 'downloaded' | 'error';
+
+/**
+ * One entry in the batch file queue — holds the complete state for a single
+ * file so switching between files preserves all work.
+ */
+export interface FileEntry {
+  id:               string;           // unique key: `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  parsed:           ParsedFile;       // always present (stub used for error entries)
+  issues:           Issue[];
+  result:           CleanResult | null;
+  prevResult:       CleanResult | null;
+  activeColumn:     string | null;
+  filterSlots:      FilterSlot[];
+  findReplaceRules: FindReplaceRule[];
+  findReplaceOpen:  boolean;
+  status:           FileStatus;
+  errorMessage?:    string;           // only present when status === 'error'
+}
