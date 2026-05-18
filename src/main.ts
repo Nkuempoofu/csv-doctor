@@ -7,7 +7,7 @@
 
 import './styles.css';
 
-import type { ParsedFile, Issue, IssueId, CleanResult, FilterSlot, FindReplaceRule } from './types';
+import type { ParsedFile, Issue, IssueId, CleanResult, FindReplaceRule, FileEntry } from './types';
 import { parseCsv } from './core/parser';
 import { analyze } from './core/analyzer';
 import { clean } from './core/cleaner';
@@ -25,48 +25,66 @@ import { renderFilterSlots } from './ui/filter-slots';
 import { renderAnalysisPanel } from './ui/analysis-panel';
 import { renderDownloadBar } from './ui/download-bar';
 import { renderStats } from './ui/stats';
-import { bytes } from './lib/format';
+import { bytes, escapeHtml } from './lib/format';
 import { applyFindReplace } from './lib/find-replace';
 import { generateReport, downloadReport, suggestReportFilename } from './core/report';
 import { renderFindReplacePanel } from './ui/find-replace-panel';
 import type { FindReplacePanelCallbacks } from './ui/find-replace-panel';
+import { renderFileQueue } from './ui/file-queue';
 
 /* ───────────────────────────────────────────────────
    State
 ─────────────────────────────────────────────────── */
 
 interface AppState {
-  parsed: ParsedFile | null;
-  issues: Issue[];
-  result: CleanResult | null;
-  prevResult: CleanResult | null;   // one-level undo
-  toast: { message: string; tone: 'info' | 'error' | 'success' } | null;
-  activeColumn: string | null;
-  filterSlots: FilterSlot[];
-  sidebarOpen: boolean;
-  findReplaceRules: FindReplaceRule[];
-  findReplaceOpen:  boolean;
+  files:        FileEntry[];
+  activeFileId: string | null;
+  toast:        { message: string; tone: 'info' | 'error' | 'success' } | null;
+  sidebarOpen:  boolean;
 }
 
 const state: AppState = {
-  parsed: null,
-  issues: [],
-  result: null,
-  prevResult: null,
-  toast: null,
-  activeColumn: null,
-  filterSlots: [{ column: '', value: '' }],
-  sidebarOpen: true,
-  findReplaceRules: [],
-  findReplaceOpen:  false,
+  files:        [],
+  activeFileId: null,
+  toast:        null,
+  sidebarOpen:  true,
 };
 
-/* ───────────────────────────────────────────────────
-   Utilities
-─────────────────────────────────────────────────── */
+/* ── State helpers ────────────────────────────────── */
 
+/** Returns the currently-active FileEntry, or null when no file is loaded. */
+function activeFile(): FileEntry | null {
+  return state.files.find(f => f.id === state.activeFileId) ?? null;
+}
+
+/** Merges `updates` into the active FileEntry (immutably). No-op when no active file. */
+function updateActiveFile(updates: Partial<Omit<FileEntry, 'id'>>): void {
+  state.files = state.files.map(f =>
+    f.id === state.activeFileId ? { ...f, ...updates } : f
+  );
+}
+
+/** Builds a fresh FileEntry from a successfully-parsed file. */
+function makeFileEntry(parsed: ParsedFile, issues: Issue[]): FileEntry {
+  return {
+    id:               `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    parsed,
+    issues,
+    result:           null,
+    prevResult:       null,
+    activeColumn:     null,
+    filterSlots:      [{ column: '', value: '', mode: 'include' }],
+    findReplaceRules: [],
+    findReplaceOpen:  false,
+    status:           'pending',
+  };
+}
+
+/** Returns true if the active file has any non-empty filter slots. */
 function hasActiveFilters(): boolean {
-  return state.filterSlots.some(s => {
+  const file = activeFile();
+  if (!file) return false;
+  return file.filterSlots.some(s => {
     if (!s.column) return false;
     if (Array.isArray(s.value)) return s.value.length > 0;
     return s.value !== '';
@@ -87,130 +105,168 @@ function render() {
   const main = document.createElement('main');
   main.className = 'main';
 
-  if (!state.parsed) {
+  const file = activeFile();
+
+  if (!file) {
+    // ── Upload screen ──────────────────────────────
     main.appendChild(renderHero());
     main.appendChild(createUploadZone({
-      onFile: handleFile,
+      onFile:  handleFile,
       onError: (msg) => showToast(msg, 'error'),
     }));
   } else {
-    const displayHeaders = state.result?.cleanedHeaders ?? state.parsed.headers;
-    const displayRows = state.result ? state.result.rows : state.parsed.rows;
-    const filteredRows = getFilteredRows(displayRows, displayHeaders, state.filterSlots);
-
+    // ── File loaded ────────────────────────────────
     main.appendChild(renderFileBar());
-    main.appendChild(renderStats(state.parsed, state.result));
 
-    // ── Workspace: sidebar + table ──
-    const grid = document.createElement('div');
-    grid.className = `workspace${state.sidebarOpen ? '' : ' sidebar-collapsed'}`;
+    const hasBatch = state.files.length >= 2;
 
-    // Sidebar wrapper
-    const sidebarWrap = document.createElement('div');
-    sidebarWrap.className = `issues-sidebar${state.sidebarOpen ? '' : ' collapsed'}`;
+    // In batch mode, wrap content in a flex row: sidebar + content column
+    const contentHost = hasBatch
+      ? (() => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'batch-layout';
+          wrapper.appendChild(renderFileQueue({
+            files:        state.files,
+            activeFileId: state.activeFileId,
+            onSelect:     handleSelectFile,
+            onRemove:     handleRemoveFile,
+            onAddFiles:   handleAddFiles,
+          }));
+          const col = document.createElement('div');
+          col.className = 'batch-content';
+          wrapper.appendChild(col);
+          main.appendChild(wrapper);
+          return col;
+        })()
+      : main;
 
-    if (state.sidebarOpen) {
-      sidebarWrap.appendChild(createIssuesPanel(state.issues, {
-        onToggle: handleToggleIssue,
-        onApplyAll: handleApplyAll,
-        onClean: handleClean,
-        onHide: handleToggleSidebar,
-      }));
+    if (file.status === 'error') {
+      // ── Parse-error state ──────────────────────
+      const errDiv = document.createElement('div');
+      errDiv.className = 'batch-error';
+      errDiv.innerHTML = `
+        <div class="batch-error-inner">
+          <p class="batch-error-title">⚠ Could not parse this file</p>
+          <p class="batch-error-msg">${escapeHtml(file.errorMessage ?? 'Unknown error.')}</p>
+        </div>
+      `;
+      contentHost.appendChild(errDiv);
     } else {
-      const strip = document.createElement('button');
-      strip.className = 'sidebar-strip';
-      strip.id = 'sidebar-expand';
-      strip.type = 'button';
-      strip.setAttribute('aria-label', 'Show diagnosis sidebar');
-      strip.innerHTML = `<span class="sidebar-strip-label">▶ Diagnosis (${state.issues.length})</span>`;
-      sidebarWrap.appendChild(strip);
-      setTimeout(() => {
-        document.getElementById('sidebar-expand')
-          ?.addEventListener('click', handleToggleSidebar);
-      }, 0);
-    }
-    grid.appendChild(sidebarWrap);
+      // ── Normal working state ────────────────────
+      const displayHeaders = file.result?.cleanedHeaders ?? file.parsed.headers;
+      const displayRows    = file.result ? file.result.rows : file.parsed.rows;
+      const filteredRows   = getFilteredRows(displayRows, displayHeaders, file.filterSlots);
 
-    // Build diff highlight set
-    const changedCells = new Set<string>();
-    let removedRowSet: Set<number> | undefined;
-    if (state.result) {
-      const originalToCleaned = new Map<number, number>();
-      let cleanedIdx = 0;
-      removedRowSet = new Set(state.result.removedRowIndices);
-      for (let i = 0; i < state.parsed.rows.length; i++) {
-        if (!removedRowSet.has(i)) {
-          originalToCleaned.set(i, cleanedIdx);
-          cleanedIdx++;
+      contentHost.appendChild(renderStats(file.parsed, file.result));
+
+      // Workspace: diagnosis sidebar + preview table
+      const grid = document.createElement('div');
+      grid.className = `workspace${state.sidebarOpen ? '' : ' sidebar-collapsed'}`;
+
+      const sidebarWrap = document.createElement('div');
+      sidebarWrap.className = `issues-sidebar${state.sidebarOpen ? '' : ' collapsed'}`;
+
+      if (state.sidebarOpen) {
+        sidebarWrap.appendChild(createIssuesPanel(file.issues, {
+          onToggle:   handleToggleIssue,
+          onApplyAll: handleApplyAll,
+          onClean:    handleClean,
+          onHide:     handleToggleSidebar,
+        }));
+      } else {
+        const strip = document.createElement('button');
+        strip.className = 'sidebar-strip';
+        strip.id        = 'sidebar-expand';
+        strip.type      = 'button';
+        strip.setAttribute('aria-label', 'Show diagnosis sidebar');
+        strip.innerHTML = `<span class="sidebar-strip-label">▶ Diagnosis (${file.issues.length})</span>`;
+        sidebarWrap.appendChild(strip);
+        setTimeout(() => {
+          document.getElementById('sidebar-expand')
+            ?.addEventListener('click', handleToggleSidebar);
+        }, 0);
+      }
+      grid.appendChild(sidebarWrap);
+
+      // Build diff highlight set
+      const changedCells   = new Set<string>();
+      let removedRowSet: Set<number> | undefined;
+      if (file.result) {
+        const originalToCleaned = new Map<number, number>();
+        let cleanedIdx = 0;
+        removedRowSet  = new Set(file.result.removedRowIndices);
+        for (let i = 0; i < file.parsed.rows.length; i++) {
+          if (!removedRowSet.has(i)) {
+            originalToCleaned.set(i, cleanedIdx++);
+          }
+        }
+        for (const ch of file.result.changes) {
+          const newIdx = originalToCleaned.get(ch.rowIndex);
+          if (newIdx !== undefined) changedCells.add(`${newIdx}-${ch.colIndex}`);
         }
       }
-      for (const ch of state.result.changes) {
-        const newIdx = originalToCleaned.get(ch.rowIndex);
-        if (newIdx !== undefined) changedCells.add(`${newIdx}-${ch.colIndex}`);
-      }
-    }
 
-    grid.appendChild(renderPreviewTable(
-      state.parsed,
-      filteredRows,
-      {
-        mode: state.result ? 'cleaned' : 'original',
-        changedCells,
-        removedRowIndices: removedRowSet,
+      grid.appendChild(renderPreviewTable(
+        file.parsed,
+        filteredRows,
+        {
+          mode:               file.result ? 'cleaned' : 'original',
+          changedCells,
+          removedRowIndices:  removedRowSet,
+          displayHeaders,
+        }
+      ));
+
+      contentHost.appendChild(grid);
+
+      contentHost.appendChild(renderFilterSlots(
         displayHeaders,
-      }
-    ));
+        displayRows,
+        file.filterSlots,
+        filteredRows.length,
+        {
+          onSlotChange:      handleSlotChange,
+          onSlotModeToggle:  handleSlotModeToggle,
+          onAddSlot:         handleAddSlot,
+          onRemoveSlot:      handleRemoveSlot,
+          onClearAll:        handleClearAllFilters,
+        }
+      ));
 
-    main.appendChild(grid);
+      const frCallbacks: FindReplacePanelCallbacks = {
+        onAddRule:    handleFRAddRule,
+        onRemoveRule: handleFRRemoveRule,
+        onApply:      handleFRApply,
+      };
+      contentHost.appendChild(renderFindReplacePanel(
+        displayHeaders,
+        file.findReplaceRules,
+        file.findReplaceOpen,
+        handleFRToggle,
+        frCallbacks,
+      ));
 
-    // ── Below workspace ──
-    main.appendChild(renderFilterSlots(
-      displayHeaders,
-      displayRows,
-      state.filterSlots,
-      filteredRows.length,
-      {
-        onSlotChange: handleSlotChange,
-        onSlotModeToggle: handleSlotModeToggle,
-        onAddSlot: handleAddSlot,
-        onRemoveSlot: handleRemoveSlot,
-        onClearAll: handleClearAllFilters,
-      }
-    ));
+      contentHost.appendChild(renderAnalysisPanel(
+        displayHeaders,
+        filteredRows,
+        file.activeColumn,
+        handleColumnSelect,
+      ));
 
-    const frCallbacks: FindReplacePanelCallbacks = {
-      onAddRule:    handleFRAddRule,
-      onRemoveRule: handleFRRemoveRule,
-      onApply:      handleFRApply,
-    };
-    main.appendChild(renderFindReplacePanel(
-      displayHeaders,
-      state.findReplaceRules,
-      state.findReplaceOpen,
-      handleFRToggle,
-      frCallbacks,
-    ));
-
-    main.appendChild(renderAnalysisPanel(
-      displayHeaders,
-      filteredRows,
-      state.activeColumn,
-      handleColumnSelect,
-    ));
-
-    const dlOpts: DownloadBarOptions = {
-      filteredCount:    filteredRows.length,
-      hasResult:        state.result !== null,
-      hasFilters:       hasActiveFilters(),
-      hasPrevResult:    state.prevResult !== null,
-      onDownloadCsv:    handleExportCsv,
-      onDownloadJson:   handleExportJson,
-      onDownloadXlsx:   handleExportXlsx,
-      onDownloadReport: handleDownloadReport,
-      onRevert:         handleRevert,
-      onUndo:           handleUndo,
-    };
-    main.appendChild(renderDownloadBar(dlOpts));
+      const dlOpts: DownloadBarOptions = {
+        filteredCount:    filteredRows.length,
+        hasResult:        file.result !== null,
+        hasFilters:       hasActiveFilters(),
+        hasPrevResult:    file.prevResult !== null,
+        onDownloadCsv:    handleExportCsv,
+        onDownloadJson:   handleExportJson,
+        onDownloadXlsx:   handleExportXlsx,
+        onDownloadReport: handleDownloadReport,
+        onRevert:         handleRevert,
+        onUndo:           handleUndo,
+      };
+      contentHost.appendChild(renderDownloadBar(dlOpts));
+    }
   }
 
   app.appendChild(main);
@@ -325,23 +381,53 @@ function renderHero(): HTMLElement {
 }
 
 function renderFileBar(): HTMLElement {
-  const f = document.createElement('div');
+  const file = activeFile()!;
+  const f    = document.createElement('div');
   f.className = 'filebar';
   f.innerHTML = `
     <div class="filebar-info">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="filebar-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" class="filebar-icon">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
       <div>
-        <div class="filebar-name">${state.parsed!.filename}</div>
-        <div class="filebar-meta">${bytes(state.parsed!.size)} · ${state.parsed!.rows.length.toLocaleString()} rows · ${state.parsed!.headers.length} columns</div>
+        <div class="filebar-name">${escapeHtml(file.parsed.filename)}</div>
+        ${file.status !== 'error'
+          ? `<div class="filebar-meta">${bytes(file.parsed.size)} · ${file.parsed.rows.length.toLocaleString()} rows · ${file.parsed.headers.length} columns</div>`
+          : ''}
       </div>
     </div>
     <div class="filebar-actions">
-      <button class="btn btn-ghost" id="filebar-new" type="button">Upload another file</button>
+      <button class="btn btn-ghost" id="filebar-add" type="button">Add another file</button>
+      <button class="btn btn-ghost" id="filebar-reset" type="button">Start over</button>
     </div>
   `;
+
+  // Hidden input for "Add another file"
+  const input = document.createElement('input');
+  input.type   = 'file';
+  input.accept = '.csv,.tsv,.txt,text/csv';
+  input.hidden = true;
+  input.addEventListener('change', () => {
+    const picked = input.files?.[0];
+    if (picked) {
+      const reader   = new FileReader();
+      reader.onload  = () => handleFile(reader.result as string, picked.name, picked.size);
+      reader.onerror = () => showToast('Could not read the file.', 'error');
+      reader.readAsText(picked, 'utf-8');
+    }
+    input.value = '';
+  });
+  f.appendChild(input);
+
   setTimeout(() => {
-    document.getElementById('filebar-new')!.addEventListener('click', handleReset);
+    document.getElementById('filebar-add')!
+      .addEventListener('click', () => input.click());
+    document.getElementById('filebar-reset')!
+      .addEventListener('click', handleReset);
   }, 0);
+
   return f;
 }
 
@@ -370,73 +456,154 @@ function handleFile(text: string, name: string, size: number) {
   try {
     const parsed = parseCsv(text, { filename: name, size });
     const issues = analyze(parsed);
-    state.parsed = parsed;
-    state.issues = issues;
-    state.result = null;
-    state.activeColumn = null;
-    state.filterSlots = [{ column: '', value: '', mode: 'include' }];
-    state.sidebarOpen = true;
+    const entry  = makeFileEntry(parsed, issues);
+    state.files        = [...state.files, entry];
+    state.activeFileId = entry.id;
+    state.sidebarOpen  = true;
     showToast(
       `Parsed ${parsed.rows.length.toLocaleString()} rows. ${
-        issues.length === 0 ? 'No issues found!' : `${issues.length} issue${issues.length === 1 ? '' : 's'} detected.`
+        issues.length === 0
+          ? 'No issues found!'
+          : `${issues.length} issue${issues.length === 1 ? '' : 's'} detected.`
       }`,
       issues.length === 0 ? 'success' : 'info'
     );
     render();
   } catch (err) {
-    showToast(err instanceof Error ? err.message : 'Could not parse the file.', 'error');
+    const errMsg = err instanceof Error ? err.message : 'Could not parse the file.';
+    if (state.files.length > 0) {
+      // Add an error entry to the queue so the user can see which file failed
+      const errEntry: FileEntry = {
+        id:               `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        parsed:           { filename: name, size, delimiter: ',', encoding: 'utf-8', headers: [], rows: [], rawText: '' },
+        issues:           [],
+        result:           null,
+        prevResult:       null,
+        activeColumn:     null,
+        filterSlots:      [{ column: '', value: '', mode: 'include' }],
+        findReplaceRules: [],
+        findReplaceOpen:  false,
+        status:           'error',
+        errorMessage:     errMsg,
+      };
+      state.files        = [...state.files, errEntry];
+      state.activeFileId = errEntry.id;
+      render();
+    }
+    showToast(errMsg, 'error');
+  }
+}
+
+function handleSelectFile(id: string) {
+  state.activeFileId = id;
+  render();
+}
+
+function handleRemoveFile(id: string) {
+  const idx      = state.files.findIndex(f => f.id === id);
+  if (idx === -1) return;
+  const newFiles = state.files.filter(f => f.id !== id);
+
+  if (newFiles.length === 0) {
+    // Removed the last file — go back to the upload screen
+    state.files        = [];
+    state.activeFileId = null;
+  } else if (id === state.activeFileId) {
+    // Removed the active file — activate nearest neighbour
+    const newActive    = newFiles[Math.min(idx, newFiles.length - 1)];
+    state.files        = newFiles;
+    state.activeFileId = newActive.id;
+  } else {
+    state.files = newFiles;
+    // activeFileId is unaffected
+  }
+  render();
+}
+
+function handleAddFiles(fileList: FileList) {
+  for (const file of Array.from(fileList)) {
+    const ok = /\.(csv|tsv|txt)$/i.test(file.name) || file.type === 'text/csv';
+    if (!ok) {
+      showToast(`"${file.name}" doesn't look like a CSV / TSV file.`, 'error');
+      continue;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      showToast(`"${file.name}" is too large (max 50 MB).`, 'error');
+      continue;
+    }
+    const reader   = new FileReader();
+    reader.onload  = () => handleFile(reader.result as string, file.name, file.size);
+    reader.onerror = () => showToast(`Could not read "${file.name}".`, 'error');
+    reader.readAsText(file, 'utf-8');
   }
 }
 
 function handleToggleIssue(id: IssueId, enabled: boolean) {
-  state.issues = state.issues.map(i => (i.id === id ? { ...i, enabled } : i));
-  state.result = null;
+  const file = activeFile();
+  if (!file) return;
+  updateActiveFile({
+    issues: file.issues.map(i => (i.id === id ? { ...i, enabled } : i)),
+    result: null,
+  });
   render();
 }
 
 function handleApplyAll() {
-  state.issues = state.issues.map(i => ({ ...i, enabled: true }));
+  const file = activeFile();
+  if (!file) return;
+  updateActiveFile({ issues: file.issues.map(i => ({ ...i, enabled: true })) });
   render();
 }
 
 function handleClean() {
-  if (!state.parsed) return;
-  const enabled = new Set<IssueId>(state.issues.filter(i => i.enabled).map(i => i.id));
+  const file = activeFile();
+  if (!file) return;
+  const enabled = new Set<IssueId>(file.issues.filter(i => i.enabled).map(i => i.id));
   if (enabled.size === 0) {
     showToast('Toggle at least one fix on first.', 'info');
     return;
   }
-  state.prevResult = state.result;   // save snapshot before overwriting
-  state.result = clean(state.parsed, { enabled });
-  const cleanedHeaders = state.result.cleanedHeaders;
-  if (cleanedHeaders && state.activeColumn && !cleanedHeaders.includes(state.activeColumn)) {
-    state.activeColumn = null;
-  }
+  const newResult      = clean(file.parsed, { enabled });
+  const newHeaders     = newResult.cleanedHeaders;
+  const newActiveCol   = file.activeColumn && newHeaders && !newHeaders.includes(file.activeColumn)
+    ? null
+    : file.activeColumn;
+  updateActiveFile({
+    prevResult:   file.result,
+    result:       newResult,
+    activeColumn: newActiveCol,
+    status:       'cleaned',
+  });
   showToast(
-    `Cleaned ${state.result.changes.length} cell${state.result.changes.length === 1 ? '' : 's'} and removed ${state.result.removedRowIndices.length} row${state.result.removedRowIndices.length === 1 ? '' : 's'}.`,
+    `Cleaned ${newResult.changes.length} cell${newResult.changes.length === 1 ? '' : 's'} and removed ${newResult.removedRowIndices.length} row${newResult.removedRowIndices.length === 1 ? '' : 's'}.`,
     'success'
   );
   render();
 }
 
 function handleRevert() {
-  state.result           = null;
-  state.prevResult       = null;
-  state.activeColumn     = null;
-  state.filterSlots      = [{ column: '', value: '', mode: 'include' }];
-  state.findReplaceRules = [];
-  state.findReplaceOpen  = false;
+  updateActiveFile({
+    result:           null,
+    prevResult:       null,
+    activeColumn:     null,
+    filterSlots:      [{ column: '', value: '', mode: 'include' }],
+    findReplaceRules: [],
+    findReplaceOpen:  false,
+    status:           'pending',
+  });
   render();
 }
 
 function handleExportCsv() {
-  if (!state.parsed || !state.result) return;
-  const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
-  const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
+  const file = activeFile();
+  if (!file?.result) return;
+  const displayHeaders = file.result.cleanedHeaders ?? file.parsed.headers;
+  const filteredRows   = getFilteredRows(file.result.rows, displayHeaders, file.filterSlots);
   if (filteredRows.length === 0) return;
   showDownloadConfirm('CSV', filteredRows.length, () => {
-    const filename = suggestFilename(state.parsed!.filename);
-    exportCsv(state.parsed!, filteredRows, filename, state.parsed!.delimiter, displayHeaders);
+    const filename = suggestFilename(file.parsed.filename);
+    exportCsv(file.parsed, filteredRows, filename, file.parsed.delimiter, displayHeaders);
+    updateActiveFile({ status: 'downloaded' });
     showToast(hasActiveFilters()
       ? `Downloaded ${filteredRows.length.toLocaleString()} filtered rows as ${filename}`
       : `Downloaded ${filename}`, 'success');
@@ -444,118 +611,128 @@ function handleExportCsv() {
 }
 
 function handleExportJson() {
-  if (!state.parsed || !state.result) return;
-  const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
-  const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
+  const file = activeFile();
+  if (!file?.result) return;
+  const displayHeaders = file.result.cleanedHeaders ?? file.parsed.headers;
+  const filteredRows   = getFilteredRows(file.result.rows, displayHeaders, file.filterSlots);
   if (filteredRows.length === 0) return;
   showDownloadConfirm('JSON', filteredRows.length, () => {
-    const filename = suggestJsonFilename(state.parsed!.filename);
-    exportJson(state.parsed!, filteredRows, filename, displayHeaders);
+    const filename = suggestJsonFilename(file.parsed.filename);
+    exportJson(file.parsed, filteredRows, filename, displayHeaders);
+    updateActiveFile({ status: 'downloaded' });
     showToast(`Downloaded ${filename}`, 'success');
   });
 }
 
 function handleExportXlsx() {
-  if (!state.parsed || !state.result) return;
-  const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
-  const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
+  const file = activeFile();
+  if (!file?.result) return;
+  const displayHeaders = file.result.cleanedHeaders ?? file.parsed.headers;
+  const filteredRows   = getFilteredRows(file.result.rows, displayHeaders, file.filterSlots);
   if (filteredRows.length === 0) return;
   showDownloadConfirm('XLSX', filteredRows.length, () => {
-    const filename = suggestXlsxFilename(state.parsed!.filename);
-    exportXlsx(state.parsed!, filteredRows, filename, displayHeaders);
+    const filename = suggestXlsxFilename(file.parsed.filename);
+    exportXlsx(file.parsed, filteredRows, filename, displayHeaders);
+    updateActiveFile({ status: 'downloaded' });
     showToast(`Downloaded ${filename}`, 'success');
   });
 }
 
 function handleUndo() {
-  state.result = state.prevResult;
-  state.prevResult = null;
-  // If the undone result has different headers, reset active column
-  const undoneHeaders = state.result?.cleanedHeaders ?? state.parsed?.headers ?? [];
-  if (state.activeColumn && !undoneHeaders.includes(state.activeColumn)) {
-    state.activeColumn = null;
-  }
+  const file = activeFile();
+  if (!file) return;
+  const undoneHeaders = file.prevResult?.cleanedHeaders ?? file.parsed.headers;
+  updateActiveFile({
+    result:       file.prevResult,
+    prevResult:   null,
+    activeColumn: file.activeColumn && !undoneHeaders.includes(file.activeColumn)
+      ? null
+      : file.activeColumn,
+  });
   showToast('Last fix reverted.', 'info');
   render();
 }
 
 function handleDownloadReport() {
-  if (!state.parsed || !state.result) return;
-  const displayHeaders  = state.result.cleanedHeaders ?? state.parsed.headers;
-  const displayRows     = state.result.rows;
-  const filteredRows    = getFilteredRows(displayRows, displayHeaders, state.filterSlots);
+  const file = activeFile();
+  if (!file?.result) return;
+  const displayHeaders = file.result.cleanedHeaders ?? file.parsed.headers;
+  const filteredRows   = getFilteredRows(file.result.rows, displayHeaders, file.filterSlots);
   showDownloadConfirm('HTML Report', filteredRows.length, () => {
-    const html     = generateReport(state.parsed!, state.result!, displayHeaders, filteredRows.length);
-    const filename = suggestReportFilename(state.parsed!.filename);
+    const html     = generateReport(file.parsed, file.result!, displayHeaders, filteredRows.length);
+    const filename = suggestReportFilename(file.parsed.filename);
     downloadReport(html, filename);
+    updateActiveFile({ status: 'downloaded' });
     showToast(`Downloaded ${filename}`, 'success');
   });
 }
 
 function handleFRToggle() {
-  state.findReplaceOpen = !state.findReplaceOpen;
+  const file = activeFile();
+  if (!file) return;
+  updateActiveFile({ findReplaceOpen: !file.findReplaceOpen });
   render();
 }
 
 function handleFRAddRule(rule: Omit<FindReplaceRule, 'id'>) {
-  state.findReplaceRules = [
-    ...state.findReplaceRules,
-    { ...rule, id: String(Date.now()) },
-  ];
+  const file = activeFile();
+  if (!file) return;
+  updateActiveFile({
+    findReplaceRules: [...file.findReplaceRules, { ...rule, id: String(Date.now()) }],
+  });
   render();
 }
 
 function handleFRRemoveRule(id: string) {
-  state.findReplaceRules = state.findReplaceRules.filter(r => r.id !== id);
+  const file = activeFile();
+  if (!file) return;
+  updateActiveFile({
+    findReplaceRules: file.findReplaceRules.filter(r => r.id !== id),
+  });
   render();
 }
 
 function handleFRApply() {
-  if (!state.parsed) return;
-  if (state.findReplaceRules.length === 0) {
+  const file = activeFile();
+  if (!file) return;
+  if (file.findReplaceRules.length === 0) {
     showToast('Add at least one rule first.', 'info');
     return;
   }
-  const sourceRows    = state.result?.rows ?? state.parsed.rows;
-  const sourceHeaders = state.result?.cleanedHeaders ?? state.parsed.headers;
-  const { rows: newRows, changes } = applyFindReplace(sourceRows, sourceHeaders, state.findReplaceRules);
+  const sourceRows    = file.result?.rows    ?? file.parsed.rows;
+  const sourceHeaders = file.result?.cleanedHeaders ?? file.parsed.headers;
+  const { rows: newRows, changes } = applyFindReplace(sourceRows, sourceHeaders, file.findReplaceRules);
 
   if (changes.length === 0) {
     showToast('No matches found.', 'info');
     return;
   }
 
-  state.prevResult = state.result;
-  if (state.result) {
-    state.result = {
-      ...state.result,
-      rows:         newRows,
-      changes:      [...state.result.changes, ...changes],
-      appliedFixes: [...new Set([...state.result.appliedFixes, 'find-replace' as IssueId])],
-    };
-  } else {
-    state.result = {
-      rows:              newRows,
-      removedRowIndices: [],
-      changes,
-      appliedFixes:      ['find-replace'],
-      cleanedHeaders:    undefined,
-    };
-  }
+  const newResult: CleanResult = file.result
+    ? {
+        ...file.result,
+        rows:         newRows,
+        changes:      [...file.result.changes, ...changes],
+        appliedFixes: [...new Set([...file.result.appliedFixes, 'find-replace' as IssueId])],
+      }
+    : {
+        rows:              newRows,
+        removedRowIndices: [],
+        changes,
+        appliedFixes:      ['find-replace'],
+        cleanedHeaders:    undefined,
+      };
+
+  updateActiveFile({ prevResult: file.result, result: newResult });
   showToast(`Applied ${changes.length} replacement${changes.length === 1 ? '' : 's'}.`, 'success');
   render();
 }
 
 function handleReset() {
-  state.parsed           = null;
-  state.issues           = [];
-  state.result           = null;
-  state.prevResult       = null;
-  state.activeColumn     = null;
-  state.filterSlots      = [{ column: '', value: '', mode: 'include' }];
-  state.sidebarOpen      = true;
-  state.findReplaceRules = [];
-  state.findReplaceOpen  = false;
+  // Clear the entire queue and return to the upload screen
+  state.files        = [];
+  state.activeFileId = null;
+  state.sidebarOpen  = true;
   render();
 }
 
@@ -565,39 +742,51 @@ function handleToggleSidebar() {
 }
 
 function handleSlotChange(index: number, column: string, value: string | string[]) {
-  state.filterSlots = state.filterSlots.map((s, i) =>
-    i === index ? { ...s, column, value } : s
-  );
+  const file = activeFile();
+  if (!file) return;
+  updateActiveFile({
+    filterSlots: file.filterSlots.map((s, i) => i === index ? { ...s, column, value } : s),
+  });
   render();
 }
 
 function handleSlotModeToggle(index: number) {
-  state.filterSlots = state.filterSlots.map((s, i) => {
-    if (i !== index) return s;
-    return { ...s, mode: (s.mode ?? 'include') === 'include' ? 'exclude' : 'include' };
+  const file = activeFile();
+  if (!file) return;
+  updateActiveFile({
+    filterSlots: file.filterSlots.map((s, i) => {
+      if (i !== index) return s;
+      return { ...s, mode: (s.mode ?? 'include') === 'include' ? 'exclude' : 'include' };
+    }),
   });
   render();
 }
 
 function handleAddSlot() {
-  if (state.filterSlots.length >= 5) return;
-  state.filterSlots = [...state.filterSlots, { column: '', value: '', mode: 'include' }];
+  const file = activeFile();
+  if (!file || file.filterSlots.length >= 5) return;
+  updateActiveFile({
+    filterSlots: [...file.filterSlots, { column: '', value: '', mode: 'include' }],
+  });
   render();
 }
 
 function handleRemoveSlot(index: number) {
-  if (state.filterSlots.length <= 1) return;
-  state.filterSlots = state.filterSlots.filter((_, i) => i !== index);
+  const file = activeFile();
+  if (!file || file.filterSlots.length <= 1) return;
+  updateActiveFile({
+    filterSlots: file.filterSlots.filter((_, i) => i !== index),
+  });
   render();
 }
 
 function handleClearAllFilters() {
-  state.filterSlots = [{ column: '', value: '', mode: 'include' }];
+  updateActiveFile({ filterSlots: [{ column: '', value: '', mode: 'include' }] });
   render();
 }
 
 function handleColumnSelect(col: string | null) {
-  state.activeColumn = col;
+  updateActiveFile({ activeColumn: col });
   render();
 }
 
