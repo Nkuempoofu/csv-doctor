@@ -434,11 +434,13 @@ function handleExportCsv() {
   const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
   const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
   if (filteredRows.length === 0) return;
-  const filename = suggestFilename(state.parsed.filename);
-  exportCsv(state.parsed, filteredRows, filename, state.parsed.delimiter, displayHeaders);
-  showToast(hasActiveFilters()
-    ? `Downloaded ${filteredRows.length.toLocaleString()} filtered rows as ${filename}`
-    : `Downloaded ${filename}`, 'success');
+  showDownloadConfirm('CSV', filteredRows.length, () => {
+    const filename = suggestFilename(state.parsed!.filename);
+    exportCsv(state.parsed!, filteredRows, filename, state.parsed!.delimiter, displayHeaders);
+    showToast(hasActiveFilters()
+      ? `Downloaded ${filteredRows.length.toLocaleString()} filtered rows as ${filename}`
+      : `Downloaded ${filename}`, 'success');
+  });
 }
 
 function handleExportJson() {
@@ -446,9 +448,11 @@ function handleExportJson() {
   const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
   const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
   if (filteredRows.length === 0) return;
-  const filename = suggestJsonFilename(state.parsed.filename);
-  exportJson(state.parsed, filteredRows, filename, displayHeaders);
-  showToast(`Downloaded ${filename}`, 'success');
+  showDownloadConfirm('JSON', filteredRows.length, () => {
+    const filename = suggestJsonFilename(state.parsed!.filename);
+    exportJson(state.parsed!, filteredRows, filename, displayHeaders);
+    showToast(`Downloaded ${filename}`, 'success');
+  });
 }
 
 function handleExportXlsx() {
@@ -456,9 +460,11 @@ function handleExportXlsx() {
   const displayHeaders = state.result.cleanedHeaders ?? state.parsed.headers;
   const filteredRows   = getFilteredRows(state.result.rows, displayHeaders, state.filterSlots);
   if (filteredRows.length === 0) return;
-  const filename = suggestXlsxFilename(state.parsed.filename);
-  exportXlsx(state.parsed, filteredRows, filename, displayHeaders);
-  showToast(`Downloaded ${filename}`, 'success');
+  showDownloadConfirm('XLSX', filteredRows.length, () => {
+    const filename = suggestXlsxFilename(state.parsed!.filename);
+    exportXlsx(state.parsed!, filteredRows, filename, displayHeaders);
+    showToast(`Downloaded ${filename}`, 'success');
+  });
 }
 
 function handleUndo() {
@@ -478,10 +484,12 @@ function handleDownloadReport() {
   const displayHeaders  = state.result.cleanedHeaders ?? state.parsed.headers;
   const displayRows     = state.result.rows;
   const filteredRows    = getFilteredRows(displayRows, displayHeaders, state.filterSlots);
-  const html            = generateReport(state.parsed, state.result, displayHeaders, filteredRows.length);
-  const filename        = suggestReportFilename(state.parsed.filename);
-  downloadReport(html, filename);
-  showToast(`Downloaded ${filename}`, 'success');
+  showDownloadConfirm('HTML Report', filteredRows.length, () => {
+    const html     = generateReport(state.parsed!, state.result!, displayHeaders, filteredRows.length);
+    const filename = suggestReportFilename(state.parsed!.filename);
+    downloadReport(html, filename);
+    showToast(`Downloaded ${filename}`, 'success');
+  });
 }
 
 function handleFRToggle() {
@@ -591,6 +599,30 @@ function handleClearAllFilters() {
 function handleColumnSelect(col: string | null) {
   state.activeColumn = col;
   render();
+}
+
+function showDownloadConfirm(format: string, rowCount: number, onConfirm: () => void) {
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-modal">
+      <p class="confirm-title">Download as ${format}</p>
+      <p class="confirm-body">
+        Export ${rowCount.toLocaleString()} row${rowCount === 1 ? '' : 's'} as a ${format} file?
+      </p>
+      <div class="confirm-actions">
+        <button class="btn btn-ghost" id="confirm-cancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="confirm-ok" type="button">Download</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => document.body.removeChild(overlay);
+  setTimeout(() => {
+    document.getElementById('confirm-cancel')?.addEventListener('click', close);
+    document.getElementById('confirm-ok')?.addEventListener('click', () => { close(); onConfirm(); });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  }, 0);
 }
 
 let toastTimer: number | undefined;
