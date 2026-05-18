@@ -10,6 +10,113 @@ describe('analyzer setup', () => {
   });
 });
 
+describe('detectDuplicateRows', () => {
+  it('returns null when all rows are unique', () => {
+    const file = makeFile(
+      ['ID', 'Name', 'City'],
+      [
+        ['1', 'Alice', 'Cape Town'],
+        ['2', 'Bob',   'Joburg'],
+        ['3', 'Carol', 'Durban'],
+      ]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'duplicate-rows')).toBeUndefined();
+  });
+
+  it('detects a single duplicated row', () => {
+    const file = makeFile(
+      ['Name', 'Email'],
+      [
+        ['Alice', 'alice@example.com'],
+        ['Bob',   'bob@example.com'],
+        ['Alice', 'alice@example.com'], // exact duplicate of row 0
+      ]
+    );
+    const issues = analyze(file);
+    const issue = issues.find(i => i.id === 'duplicate-rows');
+    expect(issue).toBeDefined();
+    expect(issue!.count).toBe(1);
+  });
+
+  it('counts each extra copy as a separate duplicate', () => {
+    const file = makeFile(
+      ['Val'],
+      [['X'], ['X'], ['X'], ['Y']] // X appears 3× → 2 duplicates
+    );
+    const issues = analyze(file);
+    const issue = issues.find(i => i.id === 'duplicate-rows');
+    expect(issue).toBeDefined();
+    expect(issue!.count).toBe(2);
+  });
+
+  it('treats rows as equal after leading/trailing whitespace is trimmed', () => {
+    const file = makeFile(
+      ['Name', 'City'],
+      [
+        ['Alice ', ' Cape Town'], // trailing/leading spaces
+        ['Alice',  'Cape Town'],  // same data, no spaces — should be a duplicate
+      ]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'duplicate-rows')).toBeDefined();
+  });
+
+  it('does NOT treat rows as equal when they differ only in internal spacing', () => {
+    const file = makeFile(
+      ['Name'],
+      [
+        ['John Smith'],    // single space
+        ['John  Smith'],   // double space (internal — not trimmed)
+      ]
+    );
+    const issues = analyze(file);
+    // These should NOT be duplicates — internal whitespace differs
+    expect(issues.find(i => i.id === 'duplicate-rows')).toBeUndefined();
+  });
+
+  it('does NOT produce false positives when cells concatenate to the same string', () => {
+    // Classic empty-separator false-positive: ["AB","CD"] vs ["A","BCD"]
+    // both concatenate to "ABCD" with no separator — our null-byte sep prevents this.
+    const file = makeFile(
+      ['Col1', 'Col2'],
+      [
+        ['AB', 'CD'],
+        ['A',  'BCD'],
+        ['ABC', 'D'],
+      ]
+    );
+    const issues = analyze(file);
+    expect(issues.find(i => i.id === 'duplicate-rows')).toBeUndefined();
+  });
+
+  it('skips empty rows — they are handled by empty-rows detector', () => {
+    const file = makeFile(
+      ['Name'],
+      [['Alice'], [''], [''], ['Bob']]
+    );
+    const issues = analyze(file);
+    // Empty rows must NOT inflate the duplicate count
+    expect(issues.find(i => i.id === 'duplicate-rows')).toBeUndefined();
+  });
+
+  it('includes a human-readable sample in the description', () => {
+    const file = makeFile(
+      ['Product', 'Price'],
+      [
+        ['Widget', '9.99'],
+        ['Gadget', '14.99'],
+        ['Widget', '9.99'], // duplicate
+      ]
+    );
+    const issue = analyze(file).find(i => i.id === 'duplicate-rows');
+    expect(issue).toBeDefined();
+    // Description should mention column names and values from the duplicate
+    expect(issue!.description).toMatch(/Product/);
+    expect(issue!.description).toMatch(/Widget/);
+  });
+});
+
 describe('detectCurrencyNumbers', () => {
   it('flags a column where majority of values have currency symbols', () => {
     const file = makeFile(
