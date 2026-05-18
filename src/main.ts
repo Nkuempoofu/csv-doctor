@@ -27,6 +27,7 @@ import { renderDownloadBar } from './ui/download-bar';
 import { renderStats } from './ui/stats';
 import { bytes } from './lib/format';
 import { applyFindReplace } from './lib/find-replace';
+import { generateReport, downloadReport, suggestReportFilename } from './core/report';
 import { renderFindReplacePanel } from './ui/find-replace-panel';
 import type { FindReplacePanelCallbacks } from './ui/find-replace-panel';
 
@@ -468,8 +469,14 @@ function handleUndo() {
 }
 
 function handleDownloadReport() {
-  // Stub — wired up in Task 11
-  showToast('Report coming soon.', 'info');
+  if (!state.parsed || !state.result) return;
+  const displayHeaders  = state.result.cleanedHeaders ?? state.parsed.headers;
+  const displayRows     = state.result.rows;
+  const filteredRows    = getFilteredRows(displayRows, displayHeaders, state.filterSlots);
+  const html            = generateReport(state.parsed, state.result, displayHeaders, filteredRows.length);
+  const filename        = suggestReportFilename(state.parsed.filename);
+  downloadReport(html, filename);
+  showToast(`Downloaded ${filename}`, 'success');
 }
 
 function handleFRToggle() {
