@@ -28,6 +28,11 @@ export function renderFileQueue(props: FileQueueProps): HTMLElement {
   aside.className = 'file-queue';
   aside.setAttribute('aria-label', 'File queue');
 
+  // ── Header ──
+  const header = document.createElement('p');
+  header.className = 'fq-header';
+  header.textContent = `Files (${files.length})`;
+
   // ── File list ──
   const list = document.createElement('ul');
   list.className = 'fq-list';
@@ -97,6 +102,7 @@ export function renderFileQueue(props: FileQueueProps): HTMLElement {
   addBtn.textContent = '+ Add more files';
   addBtn.addEventListener('click', () => input.click());
 
+  aside.appendChild(header);
   aside.appendChild(list);
   aside.appendChild(addBtn);
   aside.appendChild(input);

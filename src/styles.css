@@ -1386,7 +1386,7 @@ button { font: inherit; cursor: pointer; }
 
 /* ── Find & Replace panel ────────────────────────── */
 .find-replace-panel {
-  margin: 0 0 1rem;
+  margin: 1.25rem 0 1rem;
   border: 1px solid var(--border, #334155);
   border-radius: 0.5rem;
   background: var(--surface-1, #0f172a);
@@ -1557,8 +1557,8 @@ button { font: inherit; cursor: pointer; }
 .file-queue {
   width: 220px;
   flex-shrink: 0;
-  background: #f8fafc;
-  border-right: 1px solid #e2e8f0;
+  background: var(--card-2);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   padding: 0.75rem 0 0.75rem;
@@ -1569,11 +1569,23 @@ button { font: inherit; cursor: pointer; }
   overflow: hidden;
 }
 
+/* ── Header label ───────────────────────────────── */
+.fq-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding: 0 0.75rem 0.5rem;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+}
+
 /* ── File list ──────────────────────────────────── */
 .fq-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.35rem 0 0;
   flex: 1;
   overflow-y: auto;
 }
@@ -1584,29 +1596,29 @@ button { font: inherit; cursor: pointer; }
   gap: 0.35rem;
   padding: 0.5rem 0.75rem;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.12s;
   border-left: 3px solid transparent;
   user-select: none;
 }
 
-.fq-item:hover { background: #f1f5f9; }
+.fq-item:hover { background: rgba(30, 41, 59, 0.6); }
 
 .fq-item--active {
-  background: #f1f5f9;
-  border-left-color: #6366f1;
+  background: rgba(6, 182, 212, 0.08);
+  border-left-color: var(--accent);
 }
 
 .fq-icon {
   width: 13px;
   height: 13px;
   flex-shrink: 0;
-  color: #94a3b8;
+  color: var(--faint);
 }
 
 .fq-name {
   flex: 1;
   font-size: 0.775rem;
-  color: #334155;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1623,17 +1635,17 @@ button { font: inherit; cursor: pointer; }
   flex-shrink: 0;
 }
 
-.fq-status--pending    { background: #f1f5f9; color: #64748b; }
-.fq-status--cleaned    { background: #dcfce7; color: #15803d; }
-.fq-status--downloaded { background: #dbeafe; color: #1d4ed8; }
-.fq-status--error      { background: #fee2e2; color: #dc2626; }
+.fq-status--pending    { background: rgba(71, 85, 105, 0.35);  color: var(--muted); }
+.fq-status--cleaned    { background: rgba(16, 185, 129, 0.15); color: var(--emerald-l); }
+.fq-status--downloaded { background: rgba(6, 182, 212, 0.12);  color: var(--accent-l); }
+.fq-status--error      { background: rgba(244, 63, 94, 0.15);  color: var(--rose); }
 
 /* ── Remove button ──────────────────────────────── */
 .fq-remove {
   background: none;
   border: none;
   cursor: pointer;
-  color: #94a3b8;
+  color: var(--faint);
   font-size: 1rem;
   line-height: 1;
   padding: 0.1rem 0.2rem;
@@ -1642,24 +1654,24 @@ button { font: inherit; cursor: pointer; }
   transition: color 0.1s, background 0.1s;
 }
 
-.fq-remove:hover { color: #ef4444; background: #fee2e2; }
+.fq-remove:hover { color: var(--rose); background: rgba(244, 63, 94, 0.12); }
 
 /* ── Add more files button ──────────────────────── */
 .fq-add-btn {
   margin: 0.6rem 0.75rem 0;
   padding: 0.4rem 0.5rem;
   font-size: 0.775rem;
-  color: #6366f1;
+  color: var(--accent-l);
   background: none;
-  border: 1px dashed #c7d2fe;
+  border: 1px dashed rgba(6, 182, 212, 0.35);
   border-radius: 6px;
   cursor: pointer;
   width: calc(100% - 1.5rem);
   text-align: center;
-  transition: background 0.1s, border-color 0.1s;
+  transition: background 0.12s, border-color 0.12s;
 }
 
-.fq-add-btn:hover { background: #eef2ff; border-color: #6366f1; }
+.fq-add-btn:hover { background: rgba(6, 182, 212, 0.08); border-color: var(--accent); }
 
 /* ── Error state in main content ───────────────── */
 .batch-error {
@@ -1693,7 +1705,7 @@ button { font: inherit; cursor: pointer; }
     width: 100%;
     min-height: auto;
     border-right: none;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border);
     padding: 0.5rem;
     flex-direction: row;
     flex-wrap: wrap;
@@ -1714,11 +1726,11 @@ button { font: inherit; cursor: pointer; }
     padding: 0.3rem 0.5rem;
     border-left: none;
     border-radius: 6px;
-    background: #f1f5f9;
+    background: rgba(30, 41, 59, 0.4);
     border-bottom: 2px solid transparent;
   }
 
-  .fq-item--active { border-bottom-color: #6366f1; }
+  .fq-item--active { border-bottom-color: var(--accent); }
 
   .fq-add-btn { margin: 0; width: auto; }
 }
